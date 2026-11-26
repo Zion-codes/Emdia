@@ -6,10 +6,21 @@ jest.mock(
 );
 
 jest.mock("expo-sqlite", () => ({
-  openDatabaseAsync: jest.fn(async () => ({
-    execAsync: jest.fn().mockResolvedValue(undefined),
-    closeAsync: jest.fn().mockResolvedValue(undefined),
-  })),
+  openDatabaseAsync: jest.fn(async () => {
+    const db = {
+      execAsync: jest.fn().mockResolvedValue(undefined),
+      getFirstAsync: jest.fn().mockResolvedValue(null),
+      getAllAsync: jest.fn().mockResolvedValue([]),
+      runAsync: jest.fn().mockResolvedValue({ changes: 0, lastInsertRowId: 0 }),
+      withExclusiveTransactionAsync: jest.fn(
+        async (task: (txn: unknown) => Promise<void>) => {
+          await task(db);
+        }
+      ),
+      closeAsync: jest.fn().mockResolvedValue(undefined),
+    };
+    return db;
+  }),
 }));
 
 jest.mock("expo-sqlite/kv-store", () => ({

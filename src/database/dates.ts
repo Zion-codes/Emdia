@@ -2,7 +2,8 @@ import { DatabaseError } from "./errors";
 
 const MONTH_KEY_REGEX = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const DATE_KEY_REGEX = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
-const ISO_DATE_PREFIX_REGEX = /^(\d{4}-\d{2}-\d{2})(?:T.*)?$/;
+const ISO_DATE_PREFIX_REGEX =
+  /^(\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2}))?$/;
 
 function isValidCalendarDate(
   year: number,
@@ -56,7 +57,7 @@ export function normalizeDateKey(value: string): string {
   }
 
   const datePart = prefixMatch[1];
-  if (!isValidDateKey(datePart)) {
+  if (!isValidDateKey(datePart) || Number.isNaN(Date.parse(trimmed))) {
     throw new DatabaseError(
       "VALIDATION_ERROR",
       "Data inválida. Use o formato AAAA-MM-DD."
@@ -96,7 +97,34 @@ export function addMonthsToMonthKey(monthKey: string, delta: number): string {
   const nextYear = Math.floor(totalMonths / 12);
   const nextMonth = ((totalMonths % 12) + 12) % 12;
 
+  if (nextYear < 1 || nextYear > 9999) {
+    throw new DatabaseError(
+      "VALIDATION_ERROR",
+      "O ano resultante deve estar entre 0001 e 9999."
+    );
+  }
+
   return `${String(nextYear).padStart(4, "0")}-${String(nextMonth + 1).padStart(2, "0")}`;
+}
+
+export function addMonthsToDateKey(dateKey: string, delta: number): string {
+  const validDateKey = normalizeDateKey(dateKey);
+  if (!Number.isInteger(delta)) {
+    throw new DatabaseError(
+      "VALIDATION_ERROR",
+      "Deslocamento de meses deve ser um número inteiro."
+    );
+  }
+
+  const day = Number(validDateKey.slice(8, 10));
+  const targetMonthKey = addMonthsToMonthKey(validDateKey.slice(0, 7), delta);
+  const [targetYearStr, targetMonthStr] = targetMonthKey.split("-");
+  const lastDay = new Date(
+    Date.UTC(Number(targetYearStr), Number(targetMonthStr), 0)
+  ).getUTCDate();
+  const clampedDay = Math.min(day, lastDay);
+
+  return `${targetMonthKey}-${String(clampedDay).padStart(2, "0")}`;
 }
 
 export function toLocalDateKey(date: Date = new Date()): string {

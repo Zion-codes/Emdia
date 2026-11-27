@@ -1,4 +1,5 @@
 import {
+  addMonthsToDateKey,
   addMonthsToMonthKey,
   assertMonthKey,
   getMonthDateRange,
@@ -42,11 +43,18 @@ describe("dates utilities", () => {
     it("normalizes YYYY-MM-DD and ISO datetime strings", () => {
       expect(normalizeDateKey(" 2026-03-15 ")).toBe("2026-03-15");
       expect(normalizeDateKey("2026-03-15T14:30:00.000Z")).toBe("2026-03-15");
+      expect(normalizeDateKey("2026-03-15T14:30:00-03:00")).toBe("2026-03-15");
       expect(() => normalizeDateKey("2026/03/15")).toThrow(
         "Data inválida. Use o formato AAAA-MM-DD."
       );
       expect(() => normalizeDateKey("2026-02-30T10:00:00Z")).toThrow(
         DatabaseError
+      );
+      expect(() => normalizeDateKey("2026-05-10Tqualquer-coisa")).toThrow(
+        "Data inválida. Use o formato AAAA-MM-DD."
+      );
+      expect(() => normalizeDateKey("2026-05-10T25:00:00Z")).toThrow(
+        "Data inválida. Use o formato AAAA-MM-DD."
       );
     });
   });
@@ -75,8 +83,34 @@ describe("dates utilities", () => {
       expect(addMonthsToMonthKey("2026-06", 0)).toBe("2026-06");
     });
 
-    it("throws VALIDATION_ERROR for non-integer delta", () => {
+    it("throws VALIDATION_ERROR for non-integer delta or out-of-range year", () => {
       expect(() => addMonthsToMonthKey("2026-06", 1.5)).toThrow(
+        "Deslocamento de meses deve ser um número inteiro."
+      );
+      expect(() => addMonthsToMonthKey("0001-01", -1)).toThrow(
+        "O ano resultante deve estar entre 0001 e 9999."
+      );
+      expect(() => addMonthsToMonthKey("9999-12", 1)).toThrow(
+        "O ano resultante deve estar entre 0001 e 9999."
+      );
+    });
+  });
+
+  describe("addMonthsToDateKey", () => {
+    it("adds months and clamps end-of-month dates including leap years", () => {
+      expect(addMonthsToDateKey("2026-01-31", 1)).toBe("2026-02-28");
+      expect(addMonthsToDateKey("2026-01-31", 2)).toBe("2026-03-31");
+      expect(addMonthsToDateKey("2024-01-31", 1)).toBe("2024-02-29");
+      expect(addMonthsToDateKey("2026-03-31", -1)).toBe("2026-02-28");
+      expect(addMonthsToDateKey("2026-05-15", 0)).toBe("2026-05-15");
+    });
+
+    it("throws VALIDATION_ERROR for invalid dateKey or non-integer delta", () => {
+      expect(() => addMonthsToDateKey("2026-02-29", 1)).toThrow(DatabaseError);
+      expect(() => addMonthsToDateKey("invalid", 1)).toThrow(
+        "Data inválida. Use o formato AAAA-MM-DD."
+      );
+      expect(() => addMonthsToDateKey("2026-01-15", 0.5)).toThrow(
         "Deslocamento de meses deve ser um número inteiro."
       );
     });

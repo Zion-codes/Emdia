@@ -1,5 +1,6 @@
 export { closeDatabase, DATABASE_NAME, openDatabase } from "./client";
 export {
+  addMonthsToDateKey,
   addMonthsToMonthKey,
   assertMonthKey,
   getMonthDateRange,
@@ -15,7 +16,7 @@ export {
 } from "./errors";
 export { getDatabaseVersion, MIGRATIONS, runMigrations } from "./migrations";
 export { type Migration } from "./migrations/types";
-export { fromCents, toCents, toPositiveCents } from "./money";
+export { distributeCents, fromCents, toCents, toPositiveCents } from "./money";
 export * from "./repositories";
 export { DEFAULT_SELF_OWNER_NAME, seedDatabase } from "./seed";
 export { generateUuid, nowIsoUtc } from "./utils";

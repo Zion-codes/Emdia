@@ -1,5 +1,5 @@
 import { DatabaseError } from "./errors";
-import { fromCents, toCents, toPositiveCents } from "./money";
+import { distributeCents, fromCents, toCents, toPositiveCents } from "./money";
 
 describe("money utilities", () => {
   describe("toCents", () => {
@@ -16,6 +16,9 @@ describe("money utilities", () => {
         "Valor monetário inválido."
       );
       expect(() => toCents(-0.01)).toThrow("O valor não pode ser negativo.");
+      expect(() => toCents(Number.MAX_SAFE_INTEGER)).toThrow(
+        "Valor monetário excede o limite seguro."
+      );
     });
   });
 
@@ -38,6 +41,9 @@ describe("money utilities", () => {
       expect(() => toPositiveCents(0.001)).toThrow(
         "O valor deve ser maior que zero."
       );
+      expect(() => toPositiveCents(Number.MAX_SAFE_INTEGER)).toThrow(
+        "Valor monetário excede o limite seguro."
+      );
     });
   });
 
@@ -53,6 +59,38 @@ describe("money utilities", () => {
         "Valor em centavos inválido."
       );
       expect(() => fromCents(Number.NEGATIVE_INFINITY)).toThrow(DatabaseError);
+    });
+  });
+
+  describe("distributeCents", () => {
+    it("distributes remainder on the last installments by default", () => {
+      expect(distributeCents(10002, 4)).toEqual([2500, 2500, 2501, 2501]);
+      expect(distributeCents(10000, 3, "last")).toEqual([3333, 3333, 3334]);
+      expect(distributeCents(10000, 4)).toEqual([2500, 2500, 2500, 2500]);
+    });
+
+    it("distributes remainder on the first installments when mode is first", () => {
+      expect(distributeCents(10002, 4, "first")).toEqual([
+        2501, 2501, 2500, 2500,
+      ]);
+      expect(distributeCents(10000, 3, "first")).toEqual([3334, 3333, 3333]);
+    });
+
+    it("throws VALIDATION_ERROR for invalid totalCents, parts, or totalCents < parts", () => {
+      expect(() => distributeCents(0, 2)).toThrow(
+        "Valor em centavos deve ser um inteiro positivo."
+      );
+      expect(() => distributeCents(10.5, 2)).toThrow(DatabaseError);
+      expect(() => distributeCents(Number.MAX_SAFE_INTEGER + 1, 2)).toThrow(
+        "Valor em centavos deve ser um inteiro positivo."
+      );
+      expect(() => distributeCents(100, 0)).toThrow(
+        "A quantidade de parcelas deve ser um inteiro positivo."
+      );
+      expect(() => distributeCents(100, 1.5)).toThrow(DatabaseError);
+      expect(() => distributeCents(2, 3)).toThrow(
+        "O valor total deve ser de pelo menos 1 centavo por parcela."
+      );
     });
   });
 });

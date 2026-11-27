@@ -9,7 +9,14 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "jest --coverage"
+    "test": "jest --coverage",
+    "eas:build:dev": "npx eas-cli build --profile development --platform all",
+    "eas:build:preview": "npx eas-cli build --profile preview --platform all",
+    "eas:build:prod": "npx eas-cli build --profile production --platform all",
+    "eas:build:prod:android": "npx eas-cli build --profile production --platform android",
+    "eas:build:prod:ios": "npx eas-cli build --profile production --platform ios",
+    "eas:submit:android": "npx eas-cli submit --profile production --platform android",
+    "eas:submit:ios": "npx eas-cli submit --profile production --platform ios"
   },
   "dependencies": {
     "@react-native-community/datetimepicker": "9.1.0",

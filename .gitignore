@@ -4,11 +4,17 @@ dist/
 build/
 coverage/
 android/
+ios/
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
+*.aab
+*.ipa
+*.apk
+google-play-service-account.json
 *.orig.*
 .metro-health-check*
 npm-debug.*

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Política de Privacidade — Em Dia</title>
+    <meta
+      name="description"
+      content="Política de Privacidade do aplicativo Em Dia: armazenamento 100% local no dispositivo, sem coleta ou envio de dados para servidores."
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #05070d;
+        --surface: #0d121d;
+        --border: #1e293b;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        background-color: var(--bg);
+        color: var(--text);
+        line-height: 1.65;
+        padding: 32px 16px;
+      }
+
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        background-color: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 32px 28px;
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: 1.85rem;
+        line-height: 1.25;
+      }
+
+      h2 {
+        margin-top: 28px;
+        font-size: 1.2rem;
+        color: var(--accent);
+      }
+
+      p,
+      li {
+        color: var(--text);
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 0.95rem;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      ul {
+        padding-left: 20px;
+      }
+
+      li + li {
+        margin-top: 6px;
+      }
+
+      code {
+        background-color: rgba(148, 163, 184, 0.14);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+
+      footer {
+        margin-top: 32px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Política de Privacidade — Em Dia</h1>
+      <div class="meta">
+        <div><strong>Última atualização:</strong> 27 de novembro de 2026</div>
+        <div><strong>Versão do aplicativo:</strong> 2.0.0</div>
+        <div>
+          <strong>Desenvolvedor:</strong> Zion Codes
+          (<code>app.zioncodes.emdia</code>)
+        </div>
+      </div>
+
+      <p>
+        O <strong>Em Dia</strong> é um aplicativo de controle financeiro pessoal
+        projetado com arquitetura <strong>100% local (offline-first)</strong>.
+        Sua privacidade é garantida por design: todos os seus dados permanecem
+        exclusivamente no seu dispositivo.
+      </p>
+
+      <h2>1. Dados armazenados e local de armazenamento</h2>
+      <p>
+        Todas as informações registradas no aplicativo — incluindo contas,
+        cartões, transações, parcelas, faturas, orçamentos, metas,
+        investimentos, preferências de tema/privacidade e nome de perfil — são
+        gravadas
+        <strong>exclusivamente no armazenamento interno do seu aparelho</strong>
+        (banco de dados local SQLite e armazenamento chave-valor do sistema).
+      </p>
+      <ul>
+        <li>Não exigimos criação de conta, login ou cadastro de e-mail/CPF.</li>
+        <li>
+          Não mantemos servidores remotos para receber, processar ou armazenar
+          seus dados financeiros.
+        </li>
+        <li>
+          Não enviamos, vendemos, alugamos ou compartilhamos qualquer dado com
+          terceiros.
+        </li>
+      </ul>
+
+      <h2>2. Coleta automática, telemetria e publicidade</h2>
+      <p>O <strong>Em Dia</strong> <strong>não</strong> utiliza:</p>
+      <ul>
+        <li>Ferramentas de analytics, rastreamento de uso ou telemetria;</li>
+        <li>SDKs de publicidade ou redes de anúncios;</li>
+        <li>Cookies ou identificadores de rastreamento entre aplicativos.</li>
+      </ul>
+
+      <h2>3. Biometria e segurança no dispositivo</h2>
+      <p>
+        O aplicativo oferece bloqueio opcional por autenticação biométrica (Face
+        ID, Touch ID ou impressão digital) por meio da API nativa do sistema
+        operacional.
+      </p>
+      <ul>
+        <li>
+          A verificação biométrica é realizada inteiramente pelo sistema
+          operacional (Android ou iOS).
+        </li>
+        <li>
+          O <strong>Em Dia</strong> <strong>não</strong> acessa, captura,
+          armazena ou transmite dados biométricos.
+        </li>
+      </ul>
+
+      <h2>4. Backup e restauração manual</h2>
+      <p>
+        O aplicativo permite exportar e restaurar backups em arquivo JSON
+        diretamente sob seu controle manual:
+      </p>
+      <ul>
+        <li>
+          A exportação utiliza a interface nativa de compartilhamento ou
+          salvamento do sistema operacional para que você escolha onde guardar o
+          arquivo.
+        </li>
+        <li>
+          A restauração lê apenas o arquivo selecionado explicitamente por você
+          no seletor de documentos do sistema.
+        </li>
+        <li>
+          No Android, o backup automático em nuvem do sistema operacional é
+          desativado (<code>allowBackup: false</code>) para evitar cópias não
+          autorizadas dos dados financeiros locais.
+        </li>
+      </ul>
+
+      <h2>5. Retenção e exclusão de dados</h2>
+      <p>
+        Como todos os dados ficam apenas no seu aparelho, você tem controle
+        total sobre eles a qualquer momento. Ao limpar os dados do aplicativo
+        nas configurações do sistema ou desinstalar o <strong>Em Dia</strong>,
+        todas as informações armazenadas localmente são removidas de forma
+        permanente, exceto arquivos de backup que você tenha exportado
+        manualmente para fora do aplicativo.
+      </p>
+
+      <h2>6. Alterações nesta política</h2>
+      <p>
+        Eventuais atualizações desta Política de Privacidade serão publicadas
+        nesta página com a respectiva data de revisão.
+      </p>
+
+      <h2>7. Contato</h2>
+      <p>
+        Em caso de dúvidas sobre esta Política de Privacidade ou sobre o
+        funcionamento do <strong>Em Dia</strong>, entre em contato com a
+        <strong>Zion Codes</strong> através dos canais oficiais listados na
+        página do aplicativo na Google Play Store ou Apple App Store.
+      </p>
+
+      <footer>Zion Codes — Em Dia v2.0.0</footer>
+    </main>
+  </body>
+</html>

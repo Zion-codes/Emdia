@@ -6,7 +6,13 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 - **Offline-first**: toda operação de escrita continua sendo persistida primeiro no SQLite local, sem bloqueio de rede.
 - **Valores monetários inteiros**: todos os valores monetários (`amount`, `limit_amount`, `paid_amount`, `current_balance`) são armazenados em **centavos** (`BIGINT` no PostgreSQL, `INTEGER` no SQLite), evitando imprecisão de ponto flutuante.
-- **Multi-tenancy por `user_id`**: no PostgreSQL, todas as 10 tabelas de domínio recebem a coluna obrigatória `user_id UUID NOT NULL` (referenciando a tabela de usuários/contas autenticadas), isolando os dados por usuário (inclusive via Row-Level Security).
+- **Multi-tenancy por `user_id` e Hardening de RLS**:
+  - No PostgreSQL, todas as 10 tabelas de domínio e `sync_batches` recebem a coluna obrigatória `user_id UUID NOT NULL` (referenciando a tabela de usuários/contas autenticadas), compondo as chaves primárias (`PRIMARY KEY (user_id, id)` ou `PRIMARY KEY (user_id, key)` / `PRIMARY KEY (user_id, batch_id)`) e chaves estrangeiras compostas `(user_id, <fk>)` para impedir referências cruzadas entre tenants.
+  - `user_id` é derivado **exclusivamente** do token JWT / contexto de sessão autenticado no servidor — valores de `user_id` eventualmente enviados no payload do cliente são ignorados ou rejeitados.
+  - Todas as tabelas multi-tenant devem ter RLS ativado e forçado inclusive para o owner da tabela:
+    - `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY;`
+    - `ALTER TABLE <table> FORCE ROW LEVEL SECURITY;`
+    - Políticas `USING (user_id = current_user_id()) WITH CHECK (user_id = current_user_id())` (ex.: `auth.uid()` ou variável de sessão definida por transação).
 - **Soft delete obrigatório**: exclusões nunca removem fisicamente os registros antes da sincronização; preenchem `deleted_at` em UTC.
 
 ## 2. Geração e Imutabilidade de UUIDs
@@ -31,7 +37,7 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 | Coluna SQLite | Tipo PostgreSQL | Constraints / Observações |
 |---|---|---|
-| `id` | `UUID` | `PRIMARY KEY` |
+| `id` | `UUID` | `PRIMARY KEY (user_id, id)` |
 | — | `UUID` | `user_id NOT NULL` |
 | `name` | `TEXT` | `NOT NULL` |
 | `color` | `TEXT` | `NULL` |
@@ -44,7 +50,7 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 | Coluna SQLite | Tipo PostgreSQL | Constraints / Observações |
 |---|---|---|
-| `id` | `UUID` | `PRIMARY KEY` |
+| `id` | `UUID` | `PRIMARY KEY (user_id, id)` |
 | — | `UUID` | `user_id NOT NULL` |
 | `name` | `TEXT` | `NOT NULL` |
 | `is_self` | `BOOLEAN` | `NOT NULL DEFAULT FALSE` (SQLite `0 \| 1`) |
@@ -58,7 +64,7 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 | Coluna SQLite | Tipo PostgreSQL | Constraints / Observações |
 |---|---|---|
-| `id` | `UUID` | `PRIMARY KEY` |
+| `id` | `UUID` | `PRIMARY KEY (user_id, id)` |
 | — | `UUID` | `user_id NOT NULL` |
 | `name` | `TEXT` | `NOT NULL` |
 | `limit_amount` | `BIGINT` | `NOT NULL DEFAULT 0 CHECK (limit_amount >= 0)` |
@@ -73,7 +79,7 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 | Coluna SQLite | Tipo PostgreSQL | Constraints / Observações |
 |---|---|---|
-| `id` | `UUID` | `PRIMARY KEY` |
+| `id` | `UUID` | `PRIMARY KEY (user_id, id)` |
 | — | `UUID` | `user_id NOT NULL` |
 | `since` | `TEXT` | `NOT NULL` (formato `YYYY-MM`) |
 | `amount` | `BIGINT` | `NOT NULL CHECK (amount >= 0)` |
@@ -89,7 +95,7 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 | Coluna SQLite | Tipo PostgreSQL | Constraints / Observações |
 |---|---|---|
-| `id` | `UUID` | `PRIMARY KEY` |
+| `id` | `UUID` | `PRIMARY KEY (user_id, id)` |
 | — | `UUID` | `user_id NOT NULL` |
 | `name` | `TEXT` | `NOT NULL` |
 | `type` | `TEXT` | `NULL` |
@@ -115,9 +121,9 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 | Coluna SQLite | Tipo PostgreSQL | Constraints / Observações |
 |---|---|---|
-| `id` | `UUID` | `PRIMARY KEY` |
+| `id` | `UUID` | `PRIMARY KEY (user_id, id)` |
 | — | `UUID` | `user_id NOT NULL` |
-| `category_id` | `UUID` | `NOT NULL REFERENCES categories(id) ON DELETE CASCADE` |
+| `category_id` | `UUID` | `NOT NULL` (`FOREIGN KEY (user_id, category_id) REFERENCES categories(user_id, id) ON DELETE CASCADE`) |
 | `month` | `TEXT` | `NOT NULL` (formato `YYYY-MM`) |
 | `amount` | `BIGINT` | `NOT NULL CHECK (amount >= 0)` |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL` |
@@ -132,14 +138,14 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 | Coluna SQLite | Tipo PostgreSQL | Constraints / Observações |
 |---|---|---|
-| `id` | `UUID` | `PRIMARY KEY` |
+| `id` | `UUID` | `PRIMARY KEY (user_id, id)` |
 | — | `UUID` | `user_id NOT NULL` |
 | `name` | `TEXT` | `NOT NULL` |
 | `type` | `TEXT` | `NOT NULL CHECK (type IN ('INCOME', 'EXPENSE'))` |
 | `amount` | `BIGINT` | `NOT NULL CHECK (amount > 0)` |
-| `category_id` | `UUID` | `NULL REFERENCES categories(id) ON DELETE SET NULL` |
-| `owner_id` | `UUID` | `NOT NULL REFERENCES owners(id) ON DELETE RESTRICT` |
-| `invoice_id` | `UUID` | `NULL REFERENCES invoices(id) ON DELETE SET NULL` |
+| `category_id` | `UUID` | `NULL` (`FOREIGN KEY (user_id, category_id) REFERENCES categories(user_id, id) ON DELETE SET NULL (category_id)` no PG 15+, preservando `user_id`) |
+| `owner_id` | `UUID` | `NOT NULL` (`FOREIGN KEY (user_id, owner_id) REFERENCES owners(user_id, id) ON DELETE RESTRICT`) |
+| `invoice_id` | `UUID` | `NULL` (`FOREIGN KEY (user_id, invoice_id) REFERENCES invoices(user_id, id) ON DELETE SET NULL (invoice_id)` no PG 15+, preservando `user_id`) |
 | `group_id` | `UUID` | `NULL` |
 | `installments_count` | `INTEGER` | `NOT NULL DEFAULT 1 CHECK (installments_count >= 1)` |
 | `recurrence` | `BOOLEAN` | `NOT NULL DEFAULT FALSE` (SQLite `0 \| 1`) |
@@ -160,9 +166,9 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 | Coluna SQLite | Tipo PostgreSQL | Constraints / Observações |
 |---|---|---|
-| `id` | `UUID` | `PRIMARY KEY` |
+| `id` | `UUID` | `PRIMARY KEY (user_id, id)` |
 | — | `UUID` | `user_id NOT NULL` |
-| `transaction_id` | `UUID` | `NOT NULL REFERENCES transactions(id) ON DELETE CASCADE` |
+| `transaction_id` | `UUID` | `NOT NULL` (`FOREIGN KEY (user_id, transaction_id) REFERENCES transactions(user_id, id) ON DELETE CASCADE`) |
 | `number` | `INTEGER` | `NOT NULL CHECK (number >= 1)` |
 | `amount` | `BIGINT` | `NOT NULL CHECK (amount >= 0)` |
 | `paid_amount` | `BIGINT` | `NOT NULL DEFAULT 0 CHECK (paid_amount >= 0 AND paid_amount <= amount)` |
@@ -181,11 +187,11 @@ Este documento define o contrato técnico entre o armazenamento local SQLite do 
 
 | Coluna SQLite | Tipo PostgreSQL | Constraints / Observações |
 |---|---|---|
-| `id` | `UUID` | `PRIMARY KEY` |
+| `id` | `UUID` | `PRIMARY KEY (user_id, id)` |
 | — | `UUID` | `user_id NOT NULL` |
-| `investment_id` | `UUID` | `NOT NULL REFERENCES investments(id) ON DELETE CASCADE` |
+| `investment_id` | `UUID` | `NOT NULL` (`FOREIGN KEY (user_id, investment_id) REFERENCES investments(user_id, id) ON DELETE CASCADE`) |
 | `amount` | `BIGINT` | `NOT NULL CHECK (amount > 0)` |
-| `contributed_at` | `TEXT` | `NOT NULL` |
+| `contributed_at` | `TEXT` | `NOT NULL` (formato `YYYY-MM-DD` ou timestamp ISO-8601 UTC `YYYY-MM-DDTHH:mm:ss.sssZ`) |
 | `notes` | `TEXT` | `NULL` |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL` |
 | `updated_at` | `TIMESTAMPTZ` | `NOT NULL` |
@@ -214,7 +220,7 @@ Para suportar `pull` incremental eficiente por cursor em todas as 10 tabelas:
 1. O cliente envia `POST /sync/push` com `batchId` (UUID gerado para a tentativa) e lista de mutações ordenadas topologicamente.
 2. Cada mutação carrega o registro completo no estado local atual, incluindo `updated_at` e `deleted_at`.
 3. O servidor processa o lote em transação única:
-   - Registra `batchId` em tabela de idempotência (`sync_batches`) para evitar reaplicação em caso de *retry* por falha de rede.
+   - Registra `(user_id, batch_id)` na tabela de idempotência `sync_batches` (`PRIMARY KEY (user_id, batch_id)`, com `ENABLE ROW LEVEL SECURITY` e `FORCE ROW LEVEL SECURITY`) para evitar reaplicação em caso de *retry* por falha de rede e isolar lotes entre tenants.
    - Aplica regras de resolução de conflitos antes de persistir e atualizar `server_seq`.
    - Retorna o status por item (`applied`, `conflict_resolved`, `rejected`) e o `server_seq` atualizado.
 
@@ -223,6 +229,7 @@ Para suportar `pull` incremental eficiente por cursor em todas as 10 tabelas:
 ### 6.1 Regra Base: Last-Write-Wins (LWW) por `updated_at` UTC
 
 - Compara-se `incoming.updated_at` contra `current.updated_at` em UTC.
+- **Limite de clock skew**: o servidor deve validar que `incoming.updated_at <= NOW() + INTERVAL '5 minutes'` (tolerância máxima de *clock skew* futuro). Registros com `updated_at` acima desse limite devem ser rejeitados (`rejected`) ou normalizados para o timestamp do servidor antes do LWW, impedindo que um relógio adiantado bloqueie atualizações futuras legítimas.
 - Se `incoming.updated_at > current.updated_at`, o registro recebido vence.
 - Em caso de empate exato (`incoming.updated_at === current.updated_at`), mantém-se o estado já persistido no servidor (ou desempate determinístico por `device_id` se adotado).
 

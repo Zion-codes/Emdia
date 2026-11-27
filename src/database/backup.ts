@@ -697,64 +697,88 @@ export function summarizeBackup(payload: BackupPayloadV1): BackupSummary {
   };
 }
 
+export function getUtf8ByteLength(text: string): number {
+  let bytes = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code <= 0x7f) {
+      bytes += 1;
+    } else if (code <= 0x7ff) {
+      bytes += 2;
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        i += 1;
+      } else {
+        bytes += 3;
+      }
+    } else {
+      bytes += 3;
+    }
+  }
+  return bytes;
+}
+
 export async function exportDatabaseBackup(
   db: SQLite.SQLiteDatabase
 ): Promise<BackupPayloadV1> {
-  const schemaVersion = await getDatabaseVersion(db);
+  let schemaVersion = 0;
+  let categories: BackupCategoryRow[] = [];
+  let owners: BackupOwnerRow[] = [];
+  let invoices: BackupInvoiceRow[] = [];
+  let goals: BackupGoalRow[] = [];
+  let investments: BackupInvestmentRow[] = [];
+  let app_settings: BackupAppSettingRow[] = [];
+  let category_budgets: BackupCategoryBudgetRow[] = [];
+  let transactions: BackupTransactionRow[] = [];
+  let installments: BackupInstallmentRow[] = [];
+  let investment_contributions: BackupInvestmentContributionRow[] = [];
 
-  const [
-    categories,
-    owners,
-    invoices,
-    goals,
-    investments,
-    app_settings,
-    category_budgets,
-    transactions,
-    installments,
-    investment_contributions,
-  ] = await Promise.all([
-    db.getAllAsync<BackupCategoryRow>(
+  await db.withTransactionAsync(async () => {
+    schemaVersion = await getDatabaseVersion(db);
+    categories = await db.getAllAsync<BackupCategoryRow>(
       `SELECT id, name, color, icon, created_at, updated_at, deleted_at
        FROM categories`
-    ),
-    db.getAllAsync<BackupOwnerRow>(
+    );
+    owners = await db.getAllAsync<BackupOwnerRow>(
       `SELECT id, name, is_self, created_at, updated_at, deleted_at
        FROM owners`
-    ),
-    db.getAllAsync<BackupInvoiceRow>(
+    );
+    invoices = await db.getAllAsync<BackupInvoiceRow>(
       `SELECT id, name, limit_amount, color, due_day, closing_day, created_at, updated_at, deleted_at
        FROM invoices`
-    ),
-    db.getAllAsync<BackupGoalRow>(
+    );
+    goals = await db.getAllAsync<BackupGoalRow>(
       `SELECT id, since, amount, created_at, updated_at, deleted_at
        FROM goals`
-    ),
-    db.getAllAsync<BackupInvestmentRow>(
+    );
+    investments = await db.getAllAsync<BackupInvestmentRow>(
       `SELECT id, name, type, institution, current_balance, notes, created_at, updated_at, deleted_at
        FROM investments`
-    ),
-    db.getAllAsync<BackupAppSettingRow>(
+    );
+    app_settings = await db.getAllAsync<BackupAppSettingRow>(
       `SELECT key, value, created_at, updated_at, deleted_at
        FROM app_settings`
-    ),
-    db.getAllAsync<BackupCategoryBudgetRow>(
+    );
+    category_budgets = await db.getAllAsync<BackupCategoryBudgetRow>(
       `SELECT id, category_id, month, amount, created_at, updated_at, deleted_at
        FROM category_budgets`
-    ),
-    db.getAllAsync<BackupTransactionRow>(
+    );
+    transactions = await db.getAllAsync<BackupTransactionRow>(
       `SELECT id, name, type, amount, category_id, owner_id, invoice_id, group_id, installments_count, recurrence, active, notes, created_at, updated_at, deleted_at
        FROM transactions`
-    ),
-    db.getAllAsync<BackupInstallmentRow>(
+    );
+    installments = await db.getAllAsync<BackupInstallmentRow>(
       `SELECT id, transaction_id, number, amount, paid_amount, due_date, paid_at, status, created_at, updated_at, deleted_at
        FROM installments`
-    ),
-    db.getAllAsync<BackupInvestmentContributionRow>(
-      `SELECT id, investment_id, amount, contributed_at, notes, created_at, updated_at, deleted_at
-       FROM investment_contributions`
-    ),
-  ]);
+    );
+    investment_contributions =
+      await db.getAllAsync<BackupInvestmentContributionRow>(
+        `SELECT id, investment_id, amount, contributed_at, notes, created_at, updated_at, deleted_at
+         FROM investment_contributions`
+      );
+  });
 
   return {
     app: BACKUP_APP,
@@ -785,7 +809,7 @@ export function parseAndValidateBackup(
     validationError("O arquivo de backup está vazio.");
   }
 
-  if (rawJson.length > MAX_BACKUP_FILE_SIZE_BYTES) {
+  if (getUtf8ByteLength(rawJson) > MAX_BACKUP_FILE_SIZE_BYTES) {
     validationError(
       "O arquivo de backup excede o tamanho máximo permitido de 20 MB."
     );
@@ -873,6 +897,13 @@ export async function restoreDatabaseBackup(
   payload: BackupPayloadV1,
   options?: RestoreBackupOptions
 ): Promise<RestoreBackupResult> {
+  const currentSchemaVersion = await getDatabaseVersion(db);
+  if (payload.schemaVersion !== currentSchemaVersion) {
+    validationError(
+      `Versão de schema incompatível para restauração: esperado v${currentSchemaVersion}, recebido v${payload.schemaVersion}.`
+    );
+  }
+
   const { data } = payload;
   let recurrence: EnsureRecurringInstallmentsResult | null = null;
 

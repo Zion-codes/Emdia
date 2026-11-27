@@ -19,6 +19,7 @@ import {
   exportBackupFile,
   pickBackupFile,
 } from "../../../shared/backupFiles";
+import { authenticateWithBiometrics } from "../../../shared/biometrics";
 import { useAppearance } from "../../../state/appearance";
 import { useAppLock } from "../../../state/appLock";
 import { useDatabase } from "../../../state/database";
@@ -37,6 +38,9 @@ jest.mock("../../../shared/backupFiles", () => ({
   exportBackupFile: jest.fn(),
   pickBackupFile: jest.fn(),
   createSafetyBackupFile: jest.fn(),
+}));
+jest.mock("../../../shared/biometrics", () => ({
+  authenticateWithBiometrics: jest.fn(),
 }));
 jest.mock("../../../database", () => {
   const actual =
@@ -65,6 +69,7 @@ const mockUseDatabase = jest.mocked(useDatabase);
 const mockExportBackupFile = jest.mocked(exportBackupFile);
 const mockPickBackupFile = jest.mocked(pickBackupFile);
 const mockCreateSafetyBackupFile = jest.mocked(createSafetyBackupFile);
+const mockAuthenticateWithBiometrics = jest.mocked(authenticateWithBiometrics);
 const mockRestoreDatabaseBackup = jest.mocked(restoreDatabaseBackup);
 const mockUseProfile = jest.mocked(useProfile);
 const mockUseAppearance = jest.mocked(useAppearance);
@@ -268,15 +273,11 @@ describe("SettingsScreen", () => {
     expect(screen.getByText("CA")).toBeTruthy();
   });
 
-  it("exports backup with loading, shared/local feedback and error handling", async () => {
+  it("exports backup with loading, sharing error propagation and generic error handling", async () => {
     await render(<SettingsScreen />);
     expect(screen.getByTestId("backup-security-notice")).toBeTruthy();
 
-    let resolveExport!: (value: {
-      fileName: string;
-      fileUri: string;
-      shared: boolean;
-    }) => void;
+    let resolveExport!: (value: { fileName: string; fileUri: string }) => void;
     mockExportBackupFile.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveExport = resolve;
@@ -293,24 +294,28 @@ describe("SettingsScreen", () => {
     resolveExport({
       fileName: "emdia-backup-20260310-100000.json",
       fileUri: "file:///cache/emdia-backup-20260310-100000.json",
-      shared: true,
     });
 
     await waitFor(() => {
       expect(screen.getByTestId("backup-success-message")).toBeTruthy();
+      expect(
+        screen.getByText(
+          "Backup emdia-backup-20260310-100000.json exportado e pronto para compartilhamento."
+        )
+      ).toBeTruthy();
     });
 
-    mockExportBackupFile.mockResolvedValueOnce({
-      fileName: "emdia-backup-20260310-100001.json",
-      fileUri: "file:///cache/emdia-backup-20260310-100001.json",
-      shared: false,
-    });
-
+    mockExportBackupFile.mockRejectedValueOnce(
+      new DatabaseError(
+        "VALIDATION_ERROR",
+        "Compartilhamento de arquivos não está disponível neste dispositivo."
+      )
+    );
     await fireEvent.press(screen.getByTestId("export-backup-button"));
     await waitFor(() => {
       expect(
         screen.getByText(
-          "Backup salvo localmente em emdia-backup-20260310-100001.json."
+          "Compartilhamento de arquivos não está disponível neste dispositivo."
         )
       ).toBeTruthy();
     });
@@ -324,11 +329,31 @@ describe("SettingsScreen", () => {
     });
   });
 
-  it("handles restore cancel, validation errors, modal cancellation and full restore flow", async () => {
+  it("handles restore cancel, picking busy state, validation errors, modal cancellation, full restore flow, isolated failures and post-commit failures", async () => {
     await render(<SettingsScreen />);
 
-    mockPickBackupFile.mockResolvedValueOnce(null);
+    let resolvePick!: (value: null) => void;
+    mockPickBackupFile.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePick = resolve;
+      })
+    );
     await fireEvent.press(screen.getByTestId("restore-backup-button"));
+    expect(
+      screen.getByTestId("export-backup-button").props.accessibilityState
+        .disabled
+    ).toBe(true);
+    expect(
+      screen.getByTestId("restore-backup-button").props.accessibilityState
+        .disabled
+    ).toBe(true);
+    resolvePick(null);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("restore-backup-button").props.accessibilityState
+          .disabled
+      ).toBe(false);
+    });
     expect(screen.queryByTestId("restore-backup-modal")).toBeNull();
 
     mockPickBackupFile.mockResolvedValueOnce({
@@ -422,7 +447,7 @@ describe("SettingsScreen", () => {
     expect(refreshProfile).toHaveBeenCalledTimes(1);
 
     mockPickBackupFile.mockResolvedValueOnce({
-      fileName: "backup-fail.json",
+      fileName: "backup-fail-db-err.json",
       content: JSON.stringify(payloadValid),
     });
     await fireEvent.press(screen.getByTestId("restore-backup-button"));
@@ -430,18 +455,84 @@ describe("SettingsScreen", () => {
       expect(screen.getByTestId("restore-backup-modal")).toBeTruthy();
     });
 
-    mockCreateSafetyBackupFile.mockRejectedValueOnce(
-      new DatabaseError("VALIDATION_ERROR", "safety write failed")
+    mockCreateSafetyBackupFile.mockResolvedValueOnce({
+      fileName: "emdia-safety.json",
+      fileUri: "file:///documents/safety-backups/emdia-safety.json",
+    });
+    mockRestoreDatabaseBackup.mockRejectedValueOnce(
+      new DatabaseError("VALIDATION_ERROR", "Versão de schema incompatível.")
     );
+    await fireEvent.press(screen.getByTestId("confirm-restore-button"));
+    await waitFor(() => {
+      expect(screen.getByText("Versão de schema incompatível.")).toBeTruthy();
+    });
+
+    mockPickBackupFile.mockResolvedValueOnce({
+      fileName: "backup-fail-generic.json",
+      content: JSON.stringify(payloadValid),
+    });
+    await fireEvent.press(screen.getByTestId("restore-backup-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("restore-backup-modal")).toBeTruthy();
+    });
+
+    mockCreateSafetyBackupFile.mockResolvedValueOnce({
+      fileName: "emdia-safety.json",
+      fileUri: "file:///documents/safety-backups/emdia-safety.json",
+    });
+    mockRestoreDatabaseBackup.mockRejectedValueOnce(new Error("disk error"));
     await fireEvent.press(screen.getByTestId("confirm-restore-button"));
     await waitFor(() => {
       expect(
         screen.getByText("Não foi possível restaurar o backup selecionado.")
       ).toBeTruthy();
     });
+
+    mockPickBackupFile.mockResolvedValueOnce({
+      fileName: "backup-post-commit-fail.json",
+      content: JSON.stringify(payloadValid),
+    });
+    await fireEvent.press(screen.getByTestId("restore-backup-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("restore-backup-modal")).toBeTruthy();
+    });
+
+    mockCreateSafetyBackupFile.mockResolvedValueOnce({
+      fileName: "emdia-safety.json",
+      fileUri: "file:///documents/safety-backups/emdia-safety.json",
+    });
+    mockRestoreDatabaseBackup.mockResolvedValueOnce({
+      schemaVersion: 1,
+      restoredCounts: {
+        categories: 0,
+        owners: 1,
+        invoices: 0,
+        goals: 0,
+        investments: 0,
+        app_settings: 0,
+        category_budgets: 0,
+        transactions: 0,
+        installments: 0,
+        investment_contributions: 0,
+      },
+      recurrence: {
+        createdInstallmentsCount: 0,
+        deactivatedTransactionsCount: 0,
+      },
+    });
+    invalidateQueries.mockRejectedValueOnce(new Error("query refresh failed"));
+
+    await fireEvent.press(screen.getByTestId("confirm-restore-button"));
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Backup restaurado, mas não foi possível atualizar a tela automaticamente. Reabra o aplicativo se necessário."
+        )
+      ).toBeTruthy();
+    });
   });
 
-  it("hides restore confirmation modal while app lock is active", async () => {
+  it("enforces biometric step-up auth on export and restore and blocks actions when locked", async () => {
     const appLockState = {
       isInitialized: true,
       isEnabled: true,
@@ -457,9 +548,106 @@ describe("SettingsScreen", () => {
 
     const view = await render(<SettingsScreen />);
 
+    mockAuthenticateWithBiometrics.mockResolvedValueOnce("cancelled");
+    await fireEvent.press(screen.getByTestId("export-backup-button"));
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Autenticação cancelada. Exportação de backup abortada."
+        )
+      ).toBeTruthy();
+    });
+    expect(mockExportBackupFile).not.toHaveBeenCalled();
+
+    mockAuthenticateWithBiometrics.mockResolvedValueOnce("error");
+    await fireEvent.press(screen.getByTestId("export-backup-button"));
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Falha na autenticação biométrica. Exportação de backup abortada."
+        )
+      ).toBeTruthy();
+    });
+    expect(mockExportBackupFile).not.toHaveBeenCalled();
+
+    mockAuthenticateWithBiometrics.mockResolvedValueOnce("authenticated");
+    mockExportBackupFile.mockResolvedValueOnce({
+      fileName: "emdia-backup-auth.json",
+      fileUri: "file:///cache/emdia-backup-auth.json",
+    });
+    await fireEvent.press(screen.getByTestId("export-backup-button"));
+    await waitFor(() => {
+      expect(mockExportBackupFile).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByText(
+          "Backup emdia-backup-auth.json exportado e pronto para compartilhamento."
+        )
+      ).toBeTruthy();
+    });
+
+    const payloadValid = createSampleBackupPayload();
     mockPickBackupFile.mockResolvedValueOnce({
-      fileName: "backup-lock.json",
-      content: JSON.stringify(createSampleBackupPayload()),
+      fileName: "backup-auth-cancel.json",
+      content: JSON.stringify(payloadValid),
+    });
+    await fireEvent.press(screen.getByTestId("restore-backup-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("restore-backup-modal")).toBeTruthy();
+    });
+
+    mockAuthenticateWithBiometrics.mockResolvedValueOnce("cancelled");
+    await fireEvent.press(screen.getByTestId("confirm-restore-button"));
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Autenticação cancelada. Restauração de backup abortada."
+        )
+      ).toBeTruthy();
+    });
+    expect(mockCreateSafetyBackupFile).not.toHaveBeenCalled();
+    expect(mockRestoreDatabaseBackup).not.toHaveBeenCalled();
+
+    mockPickBackupFile.mockResolvedValueOnce({
+      fileName: "backup-auth-ok.json",
+      content: JSON.stringify(payloadValid),
+    });
+    await fireEvent.press(screen.getByTestId("restore-backup-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("restore-backup-modal")).toBeTruthy();
+    });
+
+    mockAuthenticateWithBiometrics.mockResolvedValueOnce("authenticated");
+    mockCreateSafetyBackupFile.mockResolvedValueOnce({
+      fileName: "emdia-safety.json",
+      fileUri: "file:///documents/safety-backups/emdia-safety.json",
+    });
+    mockRestoreDatabaseBackup.mockResolvedValueOnce({
+      schemaVersion: 1,
+      restoredCounts: {
+        categories: 0,
+        owners: 1,
+        invoices: 0,
+        goals: 0,
+        investments: 0,
+        app_settings: 0,
+        category_budgets: 0,
+        transactions: 0,
+        installments: 0,
+        investment_contributions: 0,
+      },
+      recurrence: {
+        createdInstallmentsCount: 0,
+        deactivatedTransactionsCount: 0,
+      },
+    });
+    await fireEvent.press(screen.getByTestId("confirm-restore-button"));
+    await waitFor(() => {
+      expect(mockRestoreDatabaseBackup).toHaveBeenCalledTimes(1);
+    });
+
+    mockPickBackupFile.mockResolvedValueOnce({
+      fileName: "backup-lock-guard.json",
+      content: JSON.stringify(payloadValid),
     });
     await fireEvent.press(screen.getByTestId("restore-backup-button"));
     await waitFor(() => {
@@ -467,6 +655,18 @@ describe("SettingsScreen", () => {
     });
 
     appLockState.isLocked = true;
+    await fireEvent.press(screen.getByTestId("confirm-restore-button"));
+    expect(mockAuthenticateWithBiometrics).toHaveBeenCalledTimes(5);
+
+    await view.rerender(<SettingsScreen />);
+    expect(screen.queryByTestId("restore-backup-modal")).toBeNull();
+
+    await fireEvent.press(screen.getByTestId("export-backup-button"));
+    await fireEvent.press(screen.getByTestId("restore-backup-button"));
+    expect(mockExportBackupFile).toHaveBeenCalledTimes(1);
+    expect(mockPickBackupFile).toHaveBeenCalledTimes(3);
+
+    appLockState.isLocked = false;
     await view.rerender(<SettingsScreen />);
     expect(screen.queryByTestId("restore-backup-modal")).toBeNull();
   });

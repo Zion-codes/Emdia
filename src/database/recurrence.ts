@@ -86,9 +86,9 @@ function mapInstallmentRow(row: InstallmentRow, todayKey: string): Installment {
   };
 }
 
-export async function ensureRecurringInstallments(
-  db: SQLite.SQLiteDatabase,
-  now: Date = new Date()
+export async function ensureRecurringInstallmentsInTransaction(
+  txn: SQLite.SQLiteDatabase,
+  now: Date
 ): Promise<EnsureRecurringInstallmentsResult> {
   assertValidDate(now);
 
@@ -98,110 +98,121 @@ export async function ensureRecurringInstallments(
   let createdInstallmentsCount = 0;
   let deactivatedTransactionsCount = 0;
 
-  await db.withExclusiveTransactionAsync(async (txn) => {
-    const recurringTransactions = await txn.getAllAsync<{ id: string }>(
-      `SELECT id
-       FROM transactions
-       WHERE recurrence = 1
-         AND active = 1
-         AND deleted_at IS NULL`
+  const recurringTransactions = await txn.getAllAsync<{ id: string }>(
+    `SELECT id
+     FROM transactions
+     WHERE recurrence = 1
+       AND active = 1
+       AND deleted_at IS NULL`
+  );
+
+  for (const tx of recurringTransactions) {
+    const firstInstallment = await txn.getFirstAsync<RecurrenceInstallmentRow>(
+      `SELECT id, number, amount, due_date
+         FROM installments
+         WHERE transaction_id = ? AND deleted_at IS NULL
+         ORDER BY number ASC
+         LIMIT 1`,
+      tx.id
     );
 
-    for (const tx of recurringTransactions) {
-      const firstInstallment =
-        await txn.getFirstAsync<RecurrenceInstallmentRow>(
-          `SELECT id, number, amount, due_date
-           FROM installments
-           WHERE transaction_id = ? AND deleted_at IS NULL
-           ORDER BY number ASC
-           LIMIT 1`,
-          tx.id
-        );
+    if (!firstInstallment) {
+      continue;
+    }
 
-      if (!firstInstallment) {
-        continue;
-      }
-
-      const lastInstallment =
-        (await txn.getFirstAsync<RecurrenceInstallmentRow>(
-          `SELECT id, number, amount, due_date
+    const lastInstallment = (await txn.getFirstAsync<RecurrenceInstallmentRow>(
+      `SELECT id, number, amount, due_date
          FROM installments
          WHERE transaction_id = ? AND deleted_at IS NULL
          ORDER BY number DESC
          LIMIT 1`,
-          tx.id
-        )) as RecurrenceInstallmentRow;
+      tx.id
+    )) as RecurrenceInstallmentRow;
 
-      let nextNumber = lastInstallment.number + 1;
-      let nextDueDate = addMonthsToDateKey(
+    let nextNumber = lastInstallment.number + 1;
+    let nextDueDate = addMonthsToDateKey(
+      firstInstallment.due_date,
+      nextNumber - 1
+    );
+
+    while (nextDueDate.slice(0, 7) <= currentMonthKey) {
+      await txn.runAsync(
+        `INSERT INTO installments (
+           id,
+           transaction_id,
+           number,
+           amount,
+           paid_amount,
+           due_date,
+           paid_at,
+           status,
+           created_at,
+           updated_at,
+           deleted_at
+         ) VALUES (?, ?, ?, ?, 0, ?, NULL, 'PENDING', ?, ?, NULL)`,
+        generateUuid(),
+        tx.id,
+        nextNumber,
+        lastInstallment.amount,
+        nextDueDate,
+        timestamp,
+        timestamp
+      );
+
+      createdInstallmentsCount += 1;
+      nextNumber += 1;
+      nextDueDate = addMonthsToDateKey(
         firstInstallment.due_date,
         nextNumber - 1
       );
-
-      while (nextDueDate.slice(0, 7) <= currentMonthKey) {
-        await txn.runAsync(
-          `INSERT INTO installments (
-             id,
-             transaction_id,
-             number,
-             amount,
-             paid_amount,
-             due_date,
-             paid_at,
-             status,
-             created_at,
-             updated_at,
-             deleted_at
-           ) VALUES (?, ?, ?, ?, 0, ?, NULL, 'PENDING', ?, ?, NULL)`,
-          generateUuid(),
-          tx.id,
-          nextNumber,
-          lastInstallment.amount,
-          nextDueDate,
-          timestamp,
-          timestamp
-        );
-
-        createdInstallmentsCount += 1;
-        nextNumber += 1;
-        nextDueDate = addMonthsToDateKey(
-          firstInstallment.due_date,
-          nextNumber - 1
-        );
-      }
     }
+  }
 
-    const toDeactivate = await txn.getAllAsync<{ id: string }>(
-      `SELECT t.id
-       FROM transactions t
-       INNER JOIN installments i
-         ON i.transaction_id = t.id
-        AND i.deleted_at IS NULL
-       WHERE t.recurrence = 0
-         AND t.active = 1
-         AND t.deleted_at IS NULL
-       GROUP BY t.id, t.installments_count
-       HAVING COUNT(i.id) >= t.installments_count
-          AND MAX(substr(i.due_date, 1, 10)) <= ?`,
-      todayKey
+  const toDeactivate = await txn.getAllAsync<{ id: string }>(
+    `SELECT t.id
+     FROM transactions t
+     INNER JOIN installments i
+       ON i.transaction_id = t.id
+      AND i.deleted_at IS NULL
+     WHERE t.recurrence = 0
+       AND t.active = 1
+       AND t.deleted_at IS NULL
+     GROUP BY t.id, t.installments_count
+     HAVING COUNT(i.id) >= t.installments_count
+        AND MAX(substr(i.due_date, 1, 10)) <= ?`,
+    todayKey
+  );
+
+  for (const row of toDeactivate) {
+    await txn.runAsync(
+      `UPDATE transactions
+       SET active = 0, updated_at = ?
+       WHERE id = ? AND deleted_at IS NULL`,
+      timestamp,
+      row.id
     );
-
-    for (const row of toDeactivate) {
-      await txn.runAsync(
-        `UPDATE transactions
-         SET active = 0, updated_at = ?
-         WHERE id = ? AND deleted_at IS NULL`,
-        timestamp,
-        row.id
-      );
-      deactivatedTransactionsCount += 1;
-    }
-  });
+    deactivatedTransactionsCount += 1;
+  }
 
   return {
     createdInstallmentsCount,
     deactivatedTransactionsCount,
   };
+}
+
+export async function ensureRecurringInstallments(
+  db: SQLite.SQLiteDatabase,
+  now: Date = new Date()
+): Promise<EnsureRecurringInstallmentsResult> {
+  assertValidDate(now);
+
+  let result: EnsureRecurringInstallmentsResult | null = null;
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    result = await ensureRecurringInstallmentsInTransaction(txn, now);
+  });
+
+  return result as unknown as EnsureRecurringInstallmentsResult;
 }
 
 export async function stopRecurrence(

@@ -1,5 +1,19 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { type JSX, useState } from "react";
 import { Switch, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  type BackupPayloadV1,
+  type BackupSummary,
+  isDatabaseError,
+  parseAndValidateBackup,
+  restoreDatabaseBackup,
+  summarizeBackup,
+} from "../../../database";
+import {
+  createSafetyBackupFile,
+  exportBackupFile,
+  pickBackupFile,
+} from "../../../shared/backupFiles";
 import { Icon } from "../../../shared/components/Icon";
 import { ModalSheet } from "../../../shared/components/ModalSheet";
 import { ScreenContainer } from "../../../shared/components/ScreenContainer";
@@ -14,6 +28,7 @@ import {
   useAppearance,
 } from "../../../state/appearance";
 import { useAppLock } from "../../../state/appLock";
+import { useDatabase } from "../../../state/database";
 import { usePrivacy } from "../../../state/privacy";
 import { useProfile } from "../../../state/profile";
 import { avatarPalette } from "../../../theme/colors";
@@ -45,15 +60,33 @@ function getInitials(name: string): string {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
+interface PendingRestoreState {
+  fileName: string;
+  payload: BackupPayloadV1;
+  summary: BackupSummary;
+}
+
+interface BackupFeedbackState {
+  type: "success" | "error";
+  message: string;
+}
+
+function formatBackupDate(isoDate: string): string {
+  return new Date(isoDate).toLocaleString("pt-BR");
+}
+
 export function SettingsScreen(): JSX.Element {
   const colors = useColors();
   const styles = useThemedStyles(themedStyles);
-  const { profile, updateProfile } = useProfile();
+  const db = useDatabase();
+  const queryClient = useQueryClient();
+  const { profile, updateProfile, refreshProfile } = useProfile();
   const { preference, setPreference } = useAppearance();
   const { isHidden, toggle: togglePrivacy } = usePrivacy();
   const {
     isEnabled: isLockEnabled,
     isAvailable: isBiometricsAvailable,
+    isLocked,
     isAuthenticating,
     errorMessage: lockErrorMessage,
     enable: enableLock,
@@ -65,6 +98,12 @@ export function SettingsScreen(): JSX.Element {
   const [draftColor, setDraftColor] = useState(profile.avatarColor);
   const [nameError, setNameError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [backupFeedback, setBackupFeedback] =
+    useState<BackupFeedbackState | null>(null);
+  const [pendingRestore, setPendingRestore] =
+    useState<PendingRestoreState | null>(null);
 
   const openEditModal = (): void => {
     setDraftName(profile.name);
@@ -105,6 +144,85 @@ export function SettingsScreen(): JSX.Element {
       void enableLock();
     } else {
       void disableLock();
+    }
+  };
+
+  const handleExportBackup = async (): Promise<void> => {
+    setIsExporting(true);
+    setBackupFeedback(null);
+    try {
+      const result = await exportBackupFile(db);
+      setBackupFeedback({
+        type: "success",
+        message: result.shared
+          ? `Backup ${result.fileName} exportado e pronto para compartilhamento.`
+          : `Backup salvo localmente em ${result.fileName}.`,
+      });
+    } catch {
+      setBackupFeedback({
+        type: "error",
+        message: "Não foi possível exportar o backup.",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleStartRestore = async (): Promise<void> => {
+    setBackupFeedback(null);
+    try {
+      const picked = await pickBackupFile();
+      if (!picked) {
+        return;
+      }
+
+      const payload = parseAndValidateBackup(picked.content);
+      const summary = summarizeBackup(payload);
+      setPendingRestore({
+        fileName: picked.fileName,
+        payload,
+        summary,
+      });
+    } catch (error) {
+      setBackupFeedback({
+        type: "error",
+        message: isDatabaseError(error)
+          ? error.message
+          : "Não foi possível ler o arquivo de backup.",
+      });
+    }
+  };
+
+  const handleCloseRestoreModal = (): void => {
+    if (isRestoring) {
+      return;
+    }
+    setPendingRestore(null);
+  };
+
+  const handleConfirmRestore = async (
+    target: PendingRestoreState
+  ): Promise<void> => {
+    setIsRestoring(true);
+    setBackupFeedback(null);
+    try {
+      await createSafetyBackupFile(db);
+      await restoreDatabaseBackup(db, target.payload);
+      await queryClient.invalidateQueries();
+      await refreshProfile();
+      setPendingRestore(null);
+      setBackupFeedback({
+        type: "success",
+        message: "Backup restaurado com sucesso.",
+      });
+    } catch {
+      setPendingRestore(null);
+      setBackupFeedback({
+        type: "error",
+        message: "Não foi possível restaurar o backup selecionado.",
+      });
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -237,6 +355,71 @@ export function SettingsScreen(): JSX.Element {
             ) : null}
           </View>
         </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Dados e backup</Text>
+          <View style={styles.card}>
+            <Text style={styles.helperText} testID="backup-security-notice">
+              O arquivo de backup contém seus dados financeiros locais e não é
+              criptografado. Guarde-o em local seguro.
+            </Text>
+
+            <View style={styles.backupActionsRow}>
+              <TouchableOpacity
+                onPress={() => {
+                  void handleExportBackup();
+                }}
+                disabled={isExporting || isRestoring}
+                activeOpacity={opacity.pressed}
+                accessibilityRole="button"
+                testID="export-backup-button"
+                style={[
+                  styles.primaryButton,
+                  isExporting || isRestoring ? styles.disabled : undefined,
+                ]}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {isExporting ? "Exportando..." : "Exportar backup"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  void handleStartRestore();
+                }}
+                disabled={isExporting || isRestoring}
+                activeOpacity={opacity.pressed}
+                accessibilityRole="button"
+                testID="restore-backup-button"
+                style={[
+                  styles.secondaryButton,
+                  isExporting || isRestoring ? styles.disabled : undefined,
+                ]}
+              >
+                <Text style={styles.secondaryButtonText}>
+                  {isRestoring ? "Restaurando..." : "Restaurar backup"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {backupFeedback ? (
+              <Text
+                style={
+                  backupFeedback.type === "error"
+                    ? styles.errorText
+                    : styles.successText
+                }
+                testID={
+                  backupFeedback.type === "error"
+                    ? "backup-error-message"
+                    : "backup-success-message"
+                }
+              >
+                {backupFeedback.message}
+              </Text>
+            ) : null}
+          </View>
+        </View>
       </View>
 
       <ModalSheet
@@ -329,6 +512,80 @@ export function SettingsScreen(): JSX.Element {
             </TouchableOpacity>
           </View>
         </View>
+      </ModalSheet>
+      <ModalSheet
+        visible={pendingRestore !== null && !isLocked}
+        onClose={handleCloseRestoreModal}
+        title="Restaurar backup"
+        testID="restore-backup-modal"
+      >
+        {pendingRestore ? (
+          <View style={styles.modalBody}>
+            <Text style={styles.errorText} testID="restore-destructive-warning">
+              Esta ação substituirá todos os dados locais atuais pelos registros
+              do backup selecionado. Uma cópia de segurança automática será
+              salva antes da substituição.
+            </Text>
+
+            <View style={styles.summaryBox} testID="restore-backup-summary">
+              <Text style={styles.summaryItem}>
+                Arquivo: {pendingRestore.fileName}
+              </Text>
+              <Text style={styles.summaryItem}>
+                Exportado em:{" "}
+                {formatBackupDate(pendingRestore.summary.exportedAt)}
+              </Text>
+              <Text style={styles.summaryItem}>
+                Versão do schema: v{pendingRestore.summary.schemaVersion}
+              </Text>
+              <Text style={styles.summaryItem}>
+                Total de registros: {pendingRestore.summary.totalRecords}
+              </Text>
+              <Text style={styles.summaryItem}>
+                Lançamentos: {pendingRestore.summary.counts.transactions} |
+                Parcelas: {pendingRestore.summary.counts.installments}
+              </Text>
+              <Text style={styles.summaryItem}>
+                Categorias: {pendingRestore.summary.counts.categories} |
+                Cartões: {pendingRestore.summary.counts.invoices} |
+                Investimentos: {pendingRestore.summary.counts.investments}
+              </Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={handleCloseRestoreModal}
+                disabled={isRestoring}
+                activeOpacity={opacity.pressed}
+                accessibilityRole="button"
+                testID="cancel-restore-button"
+                style={[
+                  styles.secondaryButton,
+                  isRestoring ? styles.disabled : undefined,
+                ]}
+              >
+                <Text style={styles.secondaryButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  void handleConfirmRestore(pendingRestore);
+                }}
+                disabled={isRestoring}
+                activeOpacity={opacity.pressed}
+                accessibilityRole="button"
+                testID="confirm-restore-button"
+                style={[
+                  styles.dangerButton,
+                  isRestoring ? styles.disabled : undefined,
+                ]}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {isRestoring ? "Restaurando..." : "Confirmar"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
       </ModalSheet>
     </ScreenContainer>
   );
@@ -440,6 +697,34 @@ const themedStyles = createThemedStyles((colors) => ({
   errorText: {
     ...typography.meta,
     color: colors.danger,
+  },
+  successText: {
+    ...typography.meta,
+    color: colors.success,
+  },
+  backupActionsRow: {
+    flexDirection: "row",
+    gap: spacing.s12,
+  },
+  summaryBox: {
+    backgroundColor: colors.background,
+    borderRadius: radii.controlSm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.s12,
+    gap: spacing.s4,
+  },
+  summaryItem: {
+    ...typography.meta,
+    color: colors.text,
+  },
+  dangerButton: {
+    flex: 1,
+    height: controlHeight.dialogButton,
+    borderRadius: radii.button,
+    backgroundColor: colors.danger,
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalBody: {
     gap: spacing.s16,

@@ -1,4 +1,112 @@
 const mockKvStore = new Map<string, string>();
+const mockFileContents = new Map<string, string>();
+const mockCreatedDirectories = new Set<string>();
+
+function joinMockUri(...parts: (string | { uri: string })[]): string {
+  const segments = parts.map((part) =>
+    typeof part === "string" ? part : part.uri
+  );
+  return segments
+    .map((segment, index) => {
+      if (index === 0) {
+        return segment.replace(/\/+$/, "");
+      }
+      return segment.replace(/^\/+|\/+$/g, "");
+    })
+    .filter((segment) => segment.length > 0)
+    .join("/");
+}
+
+class MockDirectory {
+  uri: string;
+
+  constructor(...uris: (string | { uri: string })[]) {
+    this.uri = joinMockUri(...uris);
+  }
+
+  get exists(): boolean {
+    return mockCreatedDirectories.has(this.uri);
+  }
+
+  create = jest.fn((): void => {
+    mockCreatedDirectories.add(this.uri);
+  });
+
+  list = jest.fn((): MockFile[] => {
+    const prefix = `${this.uri}/`;
+    const files: MockFile[] = [];
+    for (const uri of mockFileContents.keys()) {
+      if (uri.startsWith(prefix)) {
+        files.push(new MockFile(uri));
+      }
+    }
+    return files;
+  });
+}
+
+class MockFile {
+  uri: string;
+
+  constructor(...uris: (string | { uri: string })[]) {
+    this.uri = joinMockUri(...uris);
+  }
+
+  get name(): string {
+    return this.uri.split("/").pop() ?? "";
+  }
+
+  get size(): number {
+    const content = mockFileContents.get(this.uri);
+    return content ? content.length : 0;
+  }
+
+  get exists(): boolean {
+    return mockFileContents.has(this.uri);
+  }
+
+  create(): void {
+    if (!mockFileContents.has(this.uri)) {
+      mockFileContents.set(this.uri, "");
+    }
+  }
+
+  write = jest.fn((content: string): void => {
+    mockFileContents.set(this.uri, content);
+  });
+
+  text = jest.fn(async (): Promise<string> => {
+    const content = mockFileContents.get(this.uri);
+    if (content === undefined) {
+      throw new Error(`File not found: ${this.uri}`);
+    }
+    return content;
+  });
+
+  delete(): void {
+    mockFileContents.delete(this.uri);
+  }
+}
+
+jest.mock("expo-file-system", () => ({
+  Paths: {
+    cache: new MockDirectory("file:///cache"),
+    document: new MockDirectory("file:///documents"),
+  },
+  Directory: MockDirectory,
+  File: MockFile,
+}));
+
+jest.mock("expo-sharing", () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  shareAsync: jest.fn(async () => undefined),
+}));
+
+jest.mock("expo-document-picker", () => ({
+  getDocumentAsync: jest.fn(async () => ({
+    canceled: true,
+    assets: null,
+  })),
+}));
 
 jest.mock(
   "react-native-safe-area-context",
@@ -71,6 +179,8 @@ beforeEach(() => {
 
 afterEach(() => {
   mockKvStore.clear();
+  mockFileContents.clear();
+  mockCreatedDirectories.clear();
   jest.clearAllTimers();
   jest.useRealTimers();
   jest.clearAllMocks();

@@ -33,6 +33,7 @@ type ProfileContextValue = {
   profile: LocalProfile;
   isLoaded: boolean;
   updateProfile: (input: UpdateProfileInput) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 };
 
 const DEFAULT_PROFILE: LocalProfile = {
@@ -89,39 +90,48 @@ export function ProfileProvider({
   const [profile, setProfile] = useState<LocalProfile>(DEFAULT_PROFILE);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  const resolveProfile = useCallback(async (): Promise<LocalProfile> => {
+    const [raw, selfOwner] = await Promise.all([
+      getStored(LOCAL_PROFILE_KEY),
+      getSelfOwner(db),
+    ]);
+
+    const storedProfile = parseStoredProfile(raw);
+    const selfName = selfOwner?.name.trim() ?? "";
+
+    if (storedProfile) {
+      if (selfName.length > 0 && selfName !== storedProfile.name) {
+        const reconciled: LocalProfile = {
+          name: selfName,
+          avatarColor: storedProfile.avatarColor,
+        };
+        await setStored(LOCAL_PROFILE_KEY, JSON.stringify(reconciled));
+        return reconciled;
+      }
+      return storedProfile;
+    }
+
+    if (selfName.length > 0) {
+      const nextProfile: LocalProfile = {
+        name: selfName,
+        avatarColor: avatarPalette[0],
+      };
+      await setStored(LOCAL_PROFILE_KEY, JSON.stringify(nextProfile));
+      return nextProfile;
+    }
+
+    return DEFAULT_PROFILE;
+  }, [db]);
+
   useEffect(() => {
     let cancelled = false;
 
-    void Promise.all([getStored(LOCAL_PROFILE_KEY), getSelfOwner(db)])
-      .then(([raw, selfOwner]) => {
-        if (cancelled) {
-          return;
+    void resolveProfile()
+      .then((resolved) => {
+        if (!cancelled) {
+          setProfile(resolved);
+          setIsLoaded(true);
         }
-
-        const storedProfile = parseStoredProfile(raw);
-        const selfName = selfOwner?.name.trim() ?? "";
-
-        if (storedProfile) {
-          if (selfName.length > 0 && selfName !== storedProfile.name) {
-            const reconciled: LocalProfile = {
-              name: selfName,
-              avatarColor: storedProfile.avatarColor,
-            };
-            setProfile(reconciled);
-            void setStored(LOCAL_PROFILE_KEY, JSON.stringify(reconciled));
-          } else {
-            setProfile(storedProfile);
-          }
-        } else if (selfName.length > 0) {
-          setProfile({
-            name: selfName,
-            avatarColor: avatarPalette[0],
-          });
-        } else {
-          setProfile(DEFAULT_PROFILE);
-        }
-
-        setIsLoaded(true);
       })
       .catch(() => {
         if (!cancelled) {
@@ -133,7 +143,18 @@ export function ProfileProvider({
     return () => {
       cancelled = true;
     };
-  }, [db]);
+  }, [resolveProfile]);
+
+  const refreshProfile = useCallback(async (): Promise<void> => {
+    try {
+      const resolved = await resolveProfile();
+      setProfile(resolved);
+    } catch {
+      setProfile(DEFAULT_PROFILE);
+    } finally {
+      setIsLoaded(true);
+    }
+  }, [resolveProfile]);
 
   const updateProfile = useCallback(
     async (input: UpdateProfileInput): Promise<void> => {
@@ -165,7 +186,9 @@ export function ProfileProvider({
   );
 
   return (
-    <ProfileContext.Provider value={{ profile, isLoaded, updateProfile }}>
+    <ProfileContext.Provider
+      value={{ profile, isLoaded, updateProfile, refreshProfile }}
+    >
       {children}
     </ProfileContext.Provider>
   );

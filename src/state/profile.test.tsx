@@ -179,6 +179,47 @@ describe("ProfileProvider", () => {
     expect(fourth.result.current.profile.name).toBe("EU");
   });
 
+  it("refreshes profile from SQLite self owner and falls back on error", async () => {
+    const { result } = await renderHook(() => useProfile(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoaded).toBe(true);
+    });
+
+    await db.runAsync(
+      "UPDATE owners SET name = 'Helena Souza' WHERE is_self = 1"
+    );
+
+    await act(async () => {
+      await result.current.refreshProfile();
+    });
+
+    expect(result.current.profile).toEqual({
+      name: "Helena Souza",
+      avatarColor: avatarPalette[0],
+    });
+
+    const stored = await Storage.getItemAsync("local_profile");
+    expect(JSON.parse(stored!)).toEqual({
+      name: "Helena Souza",
+      avatarColor: avatarPalette[0],
+    });
+
+    const dbSpy = jest
+      .spyOn(db, "getFirstAsync")
+      .mockRejectedValueOnce(new Error("refresh failed"));
+
+    await act(async () => {
+      await result.current.refreshProfile();
+    });
+
+    expect(result.current.profile).toEqual({
+      name: "EU",
+      avatarColor: avatarPalette[0],
+    });
+    dbSpy.mockRestore();
+  });
+
   it("handles storage/db rejection and unmount cancellation", async () => {
     const dbSpy = jest
       .spyOn(db, "getFirstAsync")

@@ -101,6 +101,10 @@ jest.mock("expo-sharing", () => ({
   shareAsync: jest.fn(async () => undefined),
 }));
 
+jest.mock("expo-crypto", () => ({
+  randomUUID: jest.fn(() => globalThis.crypto.randomUUID()),
+}));
+
 jest.mock("expo-document-picker", () => ({
   getDocumentAsync: jest.fn(async () => ({
     canceled: true,

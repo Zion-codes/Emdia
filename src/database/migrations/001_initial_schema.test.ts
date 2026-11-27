@@ -1,87 +1,14 @@
 import * as SQLite from "expo-sqlite";
+import { createInMemorySqliteAdapter } from "../../../tests/helpers/inMemorySqlite";
 import { seedDatabase } from "../seed";
 import { getDatabaseVersion, runMigrations } from "./index";
 import { Migration } from "./types";
 
-interface NodeStatement {
-  get: (...params: unknown[]) => unknown;
-  all: (...params: unknown[]) => unknown[];
-  run: (...params: unknown[]) => {
-    changes: number | bigint;
-    lastInsertRowid: number | bigint;
-  };
-}
-
-interface NodeDatabaseSync {
-  exec: (sql: string) => void;
-  prepare: (sql: string) => NodeStatement;
-  close: () => void;
-}
-
-interface NodeSqliteModule {
-  DatabaseSync: new (path: string) => NodeDatabaseSync;
-}
-
-function loadNodeSqlite(): NodeSqliteModule {
-  return jest.requireActual("node:sqlite") as NodeSqliteModule;
-}
-
-function createSqliteAdapter(syncDb: NodeDatabaseSync): SQLite.SQLiteDatabase {
-  const adapter = {
-    execAsync: async (source: string): Promise<void> => {
-      syncDb.exec(source);
-    },
-    getFirstAsync: async <T>(
-      source: string,
-      ...params: unknown[]
-    ): Promise<T | null> => {
-      const row = syncDb.prepare(source).get(...params) as T | undefined;
-      return row ?? null;
-    },
-    getAllAsync: async <T>(
-      source: string,
-      ...params: unknown[]
-    ): Promise<T[]> => {
-      return syncDb.prepare(source).all(...params) as T[];
-    },
-    runAsync: async (
-      source: string,
-      ...params: unknown[]
-    ): Promise<SQLite.SQLiteRunResult> => {
-      const result = syncDb.prepare(source).run(...params);
-      return {
-        changes: Number(result.changes),
-        lastInsertRowId: Number(result.lastInsertRowid),
-      };
-    },
-    withExclusiveTransactionAsync: async (
-      task: (txn: SQLite.SQLiteDatabase) => Promise<void>
-    ): Promise<void> => {
-      syncDb.exec("BEGIN EXCLUSIVE");
-      try {
-        await task(adapter as unknown as SQLite.SQLiteDatabase);
-        syncDb.exec("COMMIT");
-      } catch (error) {
-        syncDb.exec("ROLLBACK");
-        throw error;
-      }
-    },
-    closeAsync: async (): Promise<void> => {
-      syncDb.close();
-    },
-  };
-
-  return adapter as unknown as SQLite.SQLiteDatabase;
-}
-
 describe("001_initial_schema integration", () => {
-  const { DatabaseSync } = loadNodeSqlite();
-  let syncDb: NodeDatabaseSync;
   let db: SQLite.SQLiteDatabase;
 
   beforeEach(async () => {
-    syncDb = new DatabaseSync(":memory:");
-    db = createSqliteAdapter(syncDb);
+    db = createInMemorySqliteAdapter();
     await db.execAsync("PRAGMA foreign_keys = ON;");
   });
 

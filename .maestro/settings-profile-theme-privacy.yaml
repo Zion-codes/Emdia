@@ -1,0 +1,25 @@
+appId: app.zioncodes.emdia
+---
+- launchApp
+- tapOn: "Configurações"
+- assertVisible:
+    id: "settings-screen"
+- tapOn:
+    id: "edit-profile-button"
+- assertVisible:
+    id: "edit-profile-modal"
+- tapOn:
+    id: "profile-name-input"
+- eraseText: 50
+- inputText: "Teste E2E"
+- tapOn:
+    id: "save-profile-button"
+- assertVisible: "Teste E2E"
+- tapOn:
+    id: "appearance-option-dark"
+- tapOn:
+    id: "appearance-option-system"
+- tapOn:
+    id: "privacy-toggle"
+- tapOn:
+    id: "privacy-toggle"

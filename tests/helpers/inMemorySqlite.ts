@@ -1,16 +1,18 @@
 import * as SQLite from "expo-sqlite";
-import { migration001InitialSchema } from "../../src/database/migrations/001_initial_schema";
+import { runMigrations } from "../../src/database/migrations";
 import { seedDatabase } from "../../src/database/seed";
 
 type SqliteBindValue = null | number | bigint | string | Uint8Array;
+type SqliteBindRecord = Record<string, SqliteBindValue>;
+type NativeBindParam = SqliteBindValue | SqliteBindRecord;
 
 interface NativeSqliteStatement {
-  run(...params: SqliteBindValue[]): {
+  run(...params: NativeBindParam[]): {
     changes: number | bigint;
     lastInsertRowid: number | bigint;
   };
-  get(...params: SqliteBindValue[]): unknown;
-  all(...params: SqliteBindValue[]): unknown[];
+  get(...params: NativeBindParam[]): unknown;
+  all(...params: NativeBindParam[]): unknown[];
 }
 
 interface NativeSqliteDatabase {
@@ -19,8 +21,7 @@ interface NativeSqliteDatabase {
   close(): void;
 }
 
-type BindInput =
-  SqliteBindValue | Record<string, SqliteBindValue> | SqliteBindValue[];
+type BindInput = SqliteBindValue | SqliteBindRecord | SqliteBindValue[];
 
 function loadDatabaseSync(): new (location: string) => NativeSqliteDatabase {
   const proc = (
@@ -34,16 +35,52 @@ function loadDatabaseSync(): new (location: string) => NativeSqliteDatabase {
   return sqliteModule.DatabaseSync;
 }
 
-function normalizeBindArgs(args: BindInput[]): SqliteBindValue[] {
+function isSqliteBindValue(value: unknown): value is SqliteBindValue {
+  return (
+    value === null ||
+    typeof value === "number" ||
+    typeof value === "bigint" ||
+    typeof value === "string" ||
+    value instanceof Uint8Array
+  );
+}
+
+function isSqliteBindRecord(value: unknown): value is SqliteBindRecord {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    value instanceof Uint8Array
+  ) {
+    return false;
+  }
+
+  return Object.values(value).every(isSqliteBindValue);
+}
+
+function normalizeBindArgs(args: BindInput[]): NativeBindParam[] {
   if (args.length === 0) {
     return [];
   }
 
-  if (args.length === 1 && Array.isArray(args[0])) {
-    return args[0];
+  if (args.length === 1) {
+    const first = args[0];
+    if (Array.isArray(first)) {
+      if (!first.every(isSqliteBindValue)) {
+        throw new TypeError("Invalid SQLite bind value in array");
+      }
+      return first;
+    }
+    if (isSqliteBindRecord(first)) {
+      return [first];
+    }
   }
 
-  return args as SqliteBindValue[];
+  if (!args.every(isSqliteBindValue)) {
+    throw new TypeError("Invalid SQLite bind argument");
+  }
+
+  return args;
 }
 
 export function createInMemorySqliteAdapter(): SQLite.SQLiteDatabase {
@@ -134,7 +171,7 @@ export function createInMemorySqliteAdapter(): SQLite.SQLiteDatabase {
 export async function createTestDatabase(): Promise<SQLite.SQLiteDatabase> {
   const db = createInMemorySqliteAdapter();
   await db.execAsync("PRAGMA foreign_keys = ON;");
-  await migration001InitialSchema.up(db);
+  await runMigrations(db);
   await seedDatabase(db);
   return db;
 }

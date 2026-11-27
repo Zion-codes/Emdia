@@ -1,0 +1,15 @@
+appId: app.zioncodes.emdia
+---
+- launchApp
+- assertVisible: "Início"
+- tapOn: "Transações"
+- assertVisible: "Transações"
+- tapOn: "Faturas"
+- assertVisible: "Faturas"
+- tapOn: "Mais"
+- assertVisible: "Mais"
+- tapOn: "Configurações"
+- assertVisible:
+    id: "settings-screen"
+- tapOn: "Início"
+- assertVisible: "Início"

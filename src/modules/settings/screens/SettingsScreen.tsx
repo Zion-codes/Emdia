@@ -14,6 +14,10 @@ import {
   exportBackupFile,
   pickBackupFile,
 } from "../../../shared/backupFiles";
+import {
+  authenticateWithBiometrics,
+  type BiometricAuthResult,
+} from "../../../shared/biometrics";
 import { Icon } from "../../../shared/components/Icon";
 import { ModalSheet } from "../../../shared/components/ModalSheet";
 import { ScreenContainer } from "../../../shared/components/ScreenContainer";
@@ -75,6 +79,16 @@ function formatBackupDate(isoDate: string): string {
   return new Date(isoDate).toLocaleString("pt-BR");
 }
 
+function getBiometricFailureMessage(
+  authResult: Exclude<BiometricAuthResult, "authenticated">,
+  actionLabel: string
+): string {
+  if (authResult === "cancelled") {
+    return `Autenticação cancelada. ${actionLabel} abortada.`;
+  }
+  return `Falha na autenticação biométrica. ${actionLabel} abortada.`;
+}
+
 export function SettingsScreen(): JSX.Element {
   const colors = useColors();
   const styles = useThemedStyles(themedStyles);
@@ -83,6 +97,7 @@ export function SettingsScreen(): JSX.Element {
   const { profile, updateProfile, refreshProfile } = useProfile();
   const { preference, setPreference } = useAppearance();
   const { isHidden, toggle: togglePrivacy } = usePrivacy();
+  const appLock = useAppLock();
   const {
     isEnabled: isLockEnabled,
     isAvailable: isBiometricsAvailable,
@@ -91,7 +106,7 @@ export function SettingsScreen(): JSX.Element {
     errorMessage: lockErrorMessage,
     enable: enableLock,
     disable: disableLock,
-  } = useAppLock();
+  } = appLock;
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [draftName, setDraftName] = useState(profile.name);
@@ -99,11 +114,16 @@ export function SettingsScreen(): JSX.Element {
   const [nameError, setNameError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isPicking, setIsPicking] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [backupFeedback, setBackupFeedback] =
     useState<BackupFeedbackState | null>(null);
   const [pendingRestore, setPendingRestore] =
     useState<PendingRestoreState | null>(null);
+
+  if (isLocked && pendingRestore !== null) {
+    setPendingRestore(null);
+  }
 
   const openEditModal = (): void => {
     setDraftName(profile.name);
@@ -148,20 +168,39 @@ export function SettingsScreen(): JSX.Element {
   };
 
   const handleExportBackup = async (): Promise<void> => {
-    setIsExporting(true);
+    if (appLock.isLocked) {
+      return;
+    }
     setBackupFeedback(null);
+    if (isLockEnabled) {
+      const authResult = await authenticateWithBiometrics(
+        "Confirme sua identidade para exportar o backup"
+      );
+      if (authResult !== "authenticated") {
+        setBackupFeedback({
+          type: "error",
+          message: getBiometricFailureMessage(
+            authResult,
+            "Exportação de backup"
+          ),
+        });
+        return;
+      }
+    }
+
+    setIsExporting(true);
     try {
       const result = await exportBackupFile(db);
       setBackupFeedback({
         type: "success",
-        message: result.shared
-          ? `Backup ${result.fileName} exportado e pronto para compartilhamento.`
-          : `Backup salvo localmente em ${result.fileName}.`,
+        message: `Backup ${result.fileName} exportado e pronto para compartilhamento.`,
       });
-    } catch {
+    } catch (error) {
       setBackupFeedback({
         type: "error",
-        message: "Não foi possível exportar o backup.",
+        message: isDatabaseError(error)
+          ? error.message
+          : "Não foi possível exportar o backup.",
       });
     } finally {
       setIsExporting(false);
@@ -169,6 +208,10 @@ export function SettingsScreen(): JSX.Element {
   };
 
   const handleStartRestore = async (): Promise<void> => {
+    if (appLock.isLocked) {
+      return;
+    }
+    setIsPicking(true);
     setBackupFeedback(null);
     try {
       const picked = await pickBackupFile();
@@ -190,6 +233,8 @@ export function SettingsScreen(): JSX.Element {
           ? error.message
           : "Não foi possível ler o arquivo de backup.",
       });
+    } finally {
+      setIsPicking(false);
     }
   };
 
@@ -203,28 +248,64 @@ export function SettingsScreen(): JSX.Element {
   const handleConfirmRestore = async (
     target: PendingRestoreState
   ): Promise<void> => {
-    setIsRestoring(true);
+    if (appLock.isLocked) {
+      return;
+    }
     setBackupFeedback(null);
+    if (isLockEnabled) {
+      const authResult = await authenticateWithBiometrics(
+        "Confirme sua identidade para restaurar o backup"
+      );
+      if (authResult !== "authenticated") {
+        setPendingRestore(null);
+        setBackupFeedback({
+          type: "error",
+          message: getBiometricFailureMessage(
+            authResult,
+            "Restauração de backup"
+          ),
+        });
+        return;
+      }
+    }
+
+    setIsRestoring(true);
     try {
-      await createSafetyBackupFile(db);
-      await restoreDatabaseBackup(db, target.payload);
-      await queryClient.invalidateQueries();
-      await refreshProfile();
+      try {
+        await createSafetyBackupFile(db);
+        await restoreDatabaseBackup(db, target.payload);
+      } catch (error) {
+        setPendingRestore(null);
+        setBackupFeedback({
+          type: "error",
+          message: isDatabaseError(error)
+            ? error.message
+            : "Não foi possível restaurar o backup selecionado.",
+        });
+        return;
+      }
+
       setPendingRestore(null);
-      setBackupFeedback({
-        type: "success",
-        message: "Backup restaurado com sucesso.",
-      });
-    } catch {
-      setPendingRestore(null);
-      setBackupFeedback({
-        type: "error",
-        message: "Não foi possível restaurar o backup selecionado.",
-      });
+      try {
+        await queryClient.invalidateQueries();
+        await refreshProfile();
+        setBackupFeedback({
+          type: "success",
+          message: "Backup restaurado com sucesso.",
+        });
+      } catch {
+        setBackupFeedback({
+          type: "error",
+          message:
+            "Backup restaurado, mas não foi possível atualizar a tela automaticamente. Reabra o aplicativo se necessário.",
+        });
+      }
     } finally {
       setIsRestoring(false);
     }
   };
+
+  const isBackupBusy = isExporting || isPicking || isRestoring;
 
   return (
     <ScreenContainer scrollable testID="settings-screen">
@@ -369,13 +450,13 @@ export function SettingsScreen(): JSX.Element {
                 onPress={() => {
                   void handleExportBackup();
                 }}
-                disabled={isExporting || isRestoring}
+                disabled={isBackupBusy}
                 activeOpacity={opacity.pressed}
                 accessibilityRole="button"
                 testID="export-backup-button"
                 style={[
                   styles.primaryButton,
-                  isExporting || isRestoring ? styles.disabled : undefined,
+                  isBackupBusy ? styles.disabled : undefined,
                 ]}
               >
                 <Text style={styles.primaryButtonText}>
@@ -387,13 +468,13 @@ export function SettingsScreen(): JSX.Element {
                 onPress={() => {
                   void handleStartRestore();
                 }}
-                disabled={isExporting || isRestoring}
+                disabled={isBackupBusy}
                 activeOpacity={opacity.pressed}
                 accessibilityRole="button"
                 testID="restore-backup-button"
                 style={[
                   styles.secondaryButton,
-                  isExporting || isRestoring ? styles.disabled : undefined,
+                  isBackupBusy ? styles.disabled : undefined,
                 ]}
               >
                 <Text style={styles.secondaryButtonText}>

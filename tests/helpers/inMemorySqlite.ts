@@ -83,6 +83,25 @@ export function createInMemorySqliteAdapter(): SQLite.SQLiteDatabase {
       return rows as T[];
     },
 
+    async withTransactionAsync(task: () => Promise<void>): Promise<void> {
+      if (transactionDepth > 0) {
+        await task();
+        return;
+      }
+
+      transactionDepth += 1;
+      nativeDb.exec("BEGIN");
+      try {
+        await task();
+        nativeDb.exec("COMMIT");
+      } catch (error) {
+        nativeDb.exec("ROLLBACK");
+        throw error;
+      } finally {
+        transactionDepth -= 1;
+      }
+    },
+
     async withExclusiveTransactionAsync(
       task: (txn: SQLite.SQLiteDatabase) => Promise<void>
     ): Promise<void> {

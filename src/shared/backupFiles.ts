@@ -2,8 +2,10 @@ import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as SQLite from "expo-sqlite";
+import { Platform } from "react-native";
 import {
   exportDatabaseBackup,
+  getUtf8ByteLength,
   MAX_BACKUP_FILE_SIZE_BYTES,
 } from "../database/backup";
 import { DatabaseError } from "../database/errors";
@@ -14,7 +16,6 @@ const SAFETY_BACKUP_FILE_REGEX = /^emdia-safety-.*\.json$/;
 export interface ExportBackupFileResult {
   fileName: string;
   fileUri: string;
-  shared: boolean;
 }
 
 export interface PickedBackupFile {
@@ -53,7 +54,8 @@ function safeDeleteFile(file: File): void {
 
 function isCacheUri(uri: string): boolean {
   const cacheBase = Paths.cache.uri.replace(/\/+$/, "");
-  return uri.startsWith(`${cacheBase}/`);
+  const safetyPrefix = `${cacheBase}/safety-backups/`;
+  return uri.startsWith(`${cacheBase}/`) && !uri.startsWith(safetyPrefix);
 }
 
 function pruneOldSafetyBackups(safetyDir: Directory): void {
@@ -77,20 +79,24 @@ export async function exportBackupFile(
   const payload = await exportDatabaseBackup(db);
   const fileName = `emdia-backup-${formatTimestampForFileName(now)}.json`;
   const file = new File(Paths.cache, fileName);
-  let sharingAvailable = false;
 
   try {
     file.create({ intermediates: true, overwrite: true });
     file.write(JSON.stringify(payload, null, 2));
 
-    sharingAvailable = await Sharing.isAvailableAsync();
-    if (sharingAvailable) {
-      await Sharing.shareAsync(file.uri, {
-        mimeType: "application/json",
-        dialogTitle: "Exportar backup do Em Dia",
-        UTI: "public.json",
-      });
+    const sharingAvailable = await Sharing.isAvailableAsync();
+    if (!sharingAvailable) {
+      throw new DatabaseError(
+        "VALIDATION_ERROR",
+        "Compartilhamento de arquivos não está disponível neste dispositivo."
+      );
     }
+
+    await Sharing.shareAsync(file.uri, {
+      mimeType: "application/json",
+      dialogTitle: "Exportar backup do Em Dia",
+      UTI: "public.json",
+    });
   } finally {
     safeDeleteFile(file);
   }
@@ -98,13 +104,17 @@ export async function exportBackupFile(
   return {
     fileName,
     fileUri: file.uri,
-    shared: sharingAvailable,
   };
 }
 
 export async function pickBackupFile(): Promise<PickedBackupFile | null> {
   const result = await DocumentPicker.getDocumentAsync({
-    type: ["application/json", "text/json"],
+    type: [
+      "application/json",
+      "text/json",
+      "text/plain",
+      "application/octet-stream",
+    ],
     copyToCacheDirectory: true,
     multiple: false,
   });
@@ -119,7 +129,10 @@ export async function pickBackupFile(): Promise<PickedBackupFile | null> {
 
   try {
     const fileSize = asset.size ?? file.size;
-    if (fileSize > MAX_BACKUP_FILE_SIZE_BYTES) {
+    const hasKnownFileSize =
+      typeof fileSize === "number" && Number.isFinite(fileSize);
+
+    if (hasKnownFileSize && fileSize > MAX_BACKUP_FILE_SIZE_BYTES) {
       throw new DatabaseError(
         "VALIDATION_ERROR",
         "O arquivo de backup excede o tamanho máximo permitido de 20 MB."
@@ -127,6 +140,16 @@ export async function pickBackupFile(): Promise<PickedBackupFile | null> {
     }
 
     const content = await file.text();
+    if (
+      !hasKnownFileSize &&
+      getUtf8ByteLength(content) > MAX_BACKUP_FILE_SIZE_BYTES
+    ) {
+      throw new DatabaseError(
+        "VALIDATION_ERROR",
+        "O arquivo de backup excede o tamanho máximo permitido de 20 MB."
+      );
+    }
+
     return {
       fileName: asset.name,
       content,
@@ -143,7 +166,8 @@ export async function createSafetyBackupFile(
   now: Date = new Date()
 ): Promise<SafetyBackupFileResult> {
   const payload = await exportDatabaseBackup(db);
-  const safetyDir = new Directory(Paths.document, "safety-backups");
+  const safetyBaseDir = Platform.OS === "ios" ? Paths.cache : Paths.document;
+  const safetyDir = new Directory(safetyBaseDir, "safety-backups");
   if (!safetyDir.exists) {
     safetyDir.create({ intermediates: true, idempotent: true });
   }

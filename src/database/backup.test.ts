@@ -6,6 +6,7 @@ import {
   BACKUP_VERSION,
   type BackupPayloadV1,
   exportDatabaseBackup,
+  getUtf8ByteLength,
   MAX_BACKUP_FILE_SIZE_BYTES,
   parseAndValidateBackup,
   restoreDatabaseBackup,
@@ -77,10 +78,14 @@ describe("database backup", () => {
     await db.closeAsync();
   });
 
-  it("exports all 10 tables including soft-deleted records and summarizes counts", async () => {
+  it("exports all 10 tables including soft-deleted records inside a transaction and summarizes counts", async () => {
     await seedFullSample(db);
+    const txSpy = jest.spyOn(db, "withTransactionAsync");
 
     const payload = await exportDatabaseBackup(db);
+
+    expect(txSpy).toHaveBeenCalledTimes(1);
+    txSpy.mockRestore();
 
     expect(payload.app).toBe(BACKUP_APP);
     expect(payload.format).toBe(BACKUP_FORMAT);
@@ -134,6 +139,10 @@ describe("database backup", () => {
     expectValidationError(() => parseAndValidateBackup("   "));
     expectValidationError(() =>
       parseAndValidateBackup("x".repeat(MAX_BACKUP_FILE_SIZE_BYTES + 1))
+    );
+    expect(getUtf8ByteLength("aá€🚀\uD800")).toBe(1 + 2 + 3 + 4 + 3);
+    expectValidationError(() =>
+      parseAndValidateBackup("🚀".repeat(5 * 1024 * 1024 + 1))
     );
     expectValidationError(() => parseAndValidateBackup("{invalid-json"));
     expectValidationError(() => parseAndValidateBackup("[]"));
@@ -441,5 +450,25 @@ describe("database backup", () => {
     );
     expect(restoredInstallments).toHaveLength(3);
     expect(restoredInstallments.map((item) => item.number)).toEqual([1, 2, 3]);
+  });
+
+  it("rejects restore when backup schemaVersion differs from database version without overwriting data", async () => {
+    await seedFullSample(db);
+    const backup = await exportDatabaseBackup(db);
+    const mismatchedPayload: BackupPayloadV1 = {
+      ...backup,
+      schemaVersion: 2,
+    };
+
+    await expect(
+      restoreDatabaseBackup(db, mismatchedPayload)
+    ).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+
+    const preserved = await db.getFirstAsync<{ id: string }>(
+      "SELECT id FROM categories WHERE id = 'cat-1'"
+    );
+    expect(preserved?.id).toBe("cat-1");
   });
 });

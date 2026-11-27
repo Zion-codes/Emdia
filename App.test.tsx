@@ -34,8 +34,13 @@ describe("App", () => {
 
     await fireEvent.press(screen.getByText("Faturas"));
     await waitFor(() => {
+      expect(screen.getByTestId("invoices-screen")).toBeTruthy();
+    });
+
+    await fireEvent.press(screen.getByText("Mais"));
+    await waitFor(() => {
       expect(
-        screen.getByText("Controle de cartões e faturas em construção")
+        screen.getByText("Categorias, responsáveis e atalhos em construção")
       ).toBeTruthy();
     });
 

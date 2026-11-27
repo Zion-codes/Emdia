@@ -22,7 +22,8 @@ import {
   spacing,
   typography,
 } from "../../../theme/tokens";
-import { extractErrorMessage, requireText } from "../utils/moreHelpers";
+import { requireText } from "../utils/moreHelpers";
+import { extractErrorMessage } from "../../../shared/utils/error";
 
 type OwnerFormModalProps = {
   visible: boolean;

@@ -59,3 +59,13 @@ export function parseAmount(value: string): number {
 export function formatAmountInput(value: number): string {
   return value.toFixed(2).replace(".", ",");
 }
+
+export function parseDateKeyToLocalDate(dateKey: string): Date {
+  const [year, month, day] = dateKey.slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+export function formatMonthLabel(monthKey: string): string {
+  const [year, month] = monthKey.split("-").map(Number);
+  return capitalizeFirst(formatMonthYear(new Date(year, month - 1, 1)));
+}

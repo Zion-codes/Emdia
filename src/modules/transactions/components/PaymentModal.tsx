@@ -16,6 +16,7 @@ import {
   useThemedStyles,
 } from "../../../shared/theme";
 import { formatAmountInput, parseAmount } from "../../../shared/utils/format";
+import { extractErrorMessage } from "../../../shared/utils/error";
 import { useDatabase } from "../../../state/database";
 import { useMoney, usePrivacy } from "../../../state/privacy";
 import {
@@ -25,7 +26,6 @@ import {
   spacing,
   typography,
 } from "../../../theme/tokens";
-import { extractErrorMessage } from "../utils/transactionHelpers";
 
 export type PaymentModalMode = "pay" | "revert";
 

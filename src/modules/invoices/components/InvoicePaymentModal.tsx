@@ -19,10 +19,8 @@ import {
   spacing,
   typography,
 } from "../../../theme/tokens";
-import {
-  extractErrorMessage,
-  formatInvoiceMonthLabel,
-} from "../utils/invoiceHelpers";
+import { formatInvoiceMonthLabel } from "../utils/invoiceHelpers";
+import { extractErrorMessage } from "../../../shared/utils/error";
 
 type InvoicePaymentMode = "full" | "partial";
 

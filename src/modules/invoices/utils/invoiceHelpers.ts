@@ -1,11 +1,8 @@
+import { type InvoiceInstallmentItem } from "../../../database";
 import {
-  type InvoiceInstallmentItem,
-  isDatabaseError,
-} from "../../../database";
-import {
-  capitalizeFirst,
   formatFullDate,
-  formatMonthYear,
+  formatMonthLabel,
+  parseDateKeyToLocalDate,
 } from "../../../shared/utils/format";
 
 export type InvoiceBadgeTone = "success" | "danger" | "warning" | "muted";
@@ -66,19 +63,9 @@ export function parseDayInput(value: string): number | null {
 }
 
 export function formatInvoiceMonthLabel(monthKey: string): string {
-  const [year, month] = monthKey.split("-").map(Number);
-  return capitalizeFirst(formatMonthYear(new Date(year, month - 1, 1)));
+  return formatMonthLabel(monthKey);
 }
 
 export function formatInvoiceDueDate(dateKey: string): string {
-  const [year, month, day] = dateKey.slice(0, 10).split("-").map(Number);
-  return formatFullDate(new Date(year, month - 1, day));
-}
-
-export function extractErrorMessage(error: unknown, fallback: string): string {
-  if (isDatabaseError(error) && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return fallback;
+  return formatFullDate(parseDateKeyToLocalDate(dateKey));
 }

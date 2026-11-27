@@ -22,7 +22,7 @@ import {
   useColors,
   useThemedStyles,
 } from "../../../shared/theme";
-import { toMonthKey } from "../../../shared/utils/format";
+import { formatMonthLabel, toMonthKey } from "../../../shared/utils/format";
 import { useDatabase } from "../../../state/database";
 import { useMoney } from "../../../state/privacy";
 import {
@@ -44,7 +44,6 @@ import {
 import { TransactionFormModal } from "../components/TransactionFormModal";
 import {
   formatDueDateLabel,
-  formatMonthLabel,
   getActiveFiltersCount,
   getTransactionStatusBadge,
   type TransactionBadgeTone,

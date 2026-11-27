@@ -24,10 +24,10 @@ import {
   typography,
 } from "../../../theme/tokens";
 import {
-  extractErrorMessage,
   formatDueDateLabel,
   getTransactionStatusBadge,
 } from "../utils/transactionHelpers";
+import { extractErrorMessage } from "../../../shared/utils/error";
 
 type ConfirmActionType = "stop_recurrence" | "delete" | null;
 

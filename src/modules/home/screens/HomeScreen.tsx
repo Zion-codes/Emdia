@@ -14,20 +14,11 @@ import {
   useColors,
   useThemedStyles,
 } from "../../../shared/theme";
-import {
-  capitalizeFirst,
-  formatMonthYear,
-  toMonthKey,
-} from "../../../shared/utils/format";
+import { formatMonthLabel, toMonthKey } from "../../../shared/utils/format";
 import { useDatabase } from "../../../state/database";
 import { useMoney } from "../../../state/privacy";
 import { useProfile } from "../../../state/profile";
 import { opacity, radii, spacing, typography } from "../../../theme/tokens";
-
-function formatMonthLabel(monthKey: string): string {
-  const [year, month] = monthKey.split("-").map(Number);
-  return capitalizeFirst(formatMonthYear(new Date(year, month - 1, 1)));
-}
 
 function clampProgress(value: number): number {
   if (!Number.isFinite(value)) {

@@ -19,7 +19,9 @@ import {
 import {
   formatAmountInput,
   formatFullDate,
+  parseDateKeyToLocalDate,
 } from "../../../shared/utils/format";
+import { extractErrorMessage } from "../../../shared/utils/error";
 import { useDatabase } from "../../../state/database";
 import { useMoney, usePrivacy } from "../../../state/privacy";
 import {
@@ -29,11 +31,7 @@ import {
   spacing,
   typography,
 } from "../../../theme/tokens";
-import {
-  extractErrorMessage,
-  parseDateKeyToLocalDate,
-  parseMoneyInput,
-} from "../utils/moreHelpers";
+import { parseMoneyInput } from "../utils/moreHelpers";
 
 type ContributionFormModalProps = {
   visible: boolean;

@@ -25,7 +25,8 @@ import {
   spacing,
   typography,
 } from "../../../theme/tokens";
-import { extractErrorMessage, parseDayInput } from "../utils/invoiceHelpers";
+import { parseDayInput } from "../utils/invoiceHelpers";
+import { extractErrorMessage } from "../../../shared/utils/error";
 
 type InvoiceFormModalProps = {
   visible: boolean;

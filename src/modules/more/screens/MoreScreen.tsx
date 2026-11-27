@@ -27,7 +27,7 @@ import {
   useColors,
   useThemedStyles,
 } from "../../../shared/theme";
-import { toMonthKey } from "../../../shared/utils/format";
+import { formatMonthLabel, toMonthKey } from "../../../shared/utils/format";
 import { useDatabase } from "../../../state/database";
 import { useMoney } from "../../../state/privacy";
 import {
@@ -42,7 +42,6 @@ import { ContributionFormModal } from "../components/ContributionFormModal";
 import { GoalFormModal } from "../components/GoalFormModal";
 import { InvestmentFormModal } from "../components/InvestmentFormModal";
 import { OwnerFormModal } from "../components/OwnerFormModal";
-import { formatMonthLabel } from "../utils/moreHelpers";
 
 export function MoreScreen(): JSX.Element {
   const colors = useColors();

@@ -2,15 +2,13 @@ import {
   type AmountMode,
   distributeCents,
   fromCents,
-  isDatabaseError,
   type RemainderDistribution,
   type TransactionListItem,
   type TransactionSortBy,
 } from "../../../database";
 import {
-  capitalizeFirst,
   formatFullDate,
-  formatMonthYear,
+  parseDateKeyToLocalDate,
 } from "../../../shared/utils/format";
 
 export type TransactionBadgeTone =
@@ -27,18 +25,8 @@ export interface InstallmentPreview {
   lastAmount: number;
 }
 
-export function parseDateKeyToLocalDate(dateKey: string): Date {
-  const [year, month, day] = dateKey.slice(0, 10).split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
 export function formatDueDateLabel(dateKey: string): string {
   return formatFullDate(parseDateKeyToLocalDate(dateKey));
-}
-
-export function formatMonthLabel(monthKey: string): string {
-  const [year, month] = monthKey.split("-").map(Number);
-  return capitalizeFirst(formatMonthYear(new Date(year, month - 1, 1)));
 }
 
 export function getTransactionStatusBadge(
@@ -136,12 +124,4 @@ export function getActiveFiltersCount(filters: {
   }
 
   return count;
-}
-
-export function extractErrorMessage(error: unknown, fallback: string): string {
-  if (isDatabaseError(error) && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return fallback;
 }

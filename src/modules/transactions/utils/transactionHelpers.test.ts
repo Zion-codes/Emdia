@@ -1,12 +1,9 @@
-import { DatabaseError, type TransactionListItem } from "../../../database";
+import { type TransactionListItem } from "../../../database";
 import {
-  extractErrorMessage,
   formatDueDateLabel,
-  formatMonthLabel,
   getActiveFiltersCount,
   getInstallmentPreview,
   getTransactionStatusBadge,
-  parseDateKeyToLocalDate,
 } from "./transactionHelpers";
 
 function createItem(
@@ -44,16 +41,8 @@ function createItem(
 }
 
 describe("transactionHelpers", () => {
-  it("parses date keys into local dates without timezone shift", () => {
-    const parsed = parseDateKeyToLocalDate("2026-11-05");
-    expect(parsed.getFullYear()).toBe(2026);
-    expect(parsed.getMonth()).toBe(10);
-    expect(parsed.getDate()).toBe(5);
-  });
-
-  it("formats due date and month labels", () => {
+  it("formats due date labels", () => {
     expect(formatDueDateLabel("2026-11-05")).toBe("05/11/2026");
-    expect(formatMonthLabel("2026-11")).toContain("2026");
   });
 
   it("returns expected status badges for every transaction state", () => {
@@ -172,24 +161,5 @@ describe("transactionHelpers", () => {
         sortBy: "name",
       })
     ).toBe(4);
-  });
-
-  it("extracts error messages only from DatabaseError with fallback", () => {
-    expect(
-      extractErrorMessage(
-        new DatabaseError("VALIDATION_ERROR", "Falha específica"),
-        "Padrão"
-      )
-    ).toBe("Falha específica");
-    expect(
-      extractErrorMessage(
-        new DatabaseError("VALIDATION_ERROR", "   "),
-        "Padrão"
-      )
-    ).toBe("Padrão");
-    expect(extractErrorMessage(new Error("Erro interno"), "Padrão")).toBe(
-      "Padrão"
-    );
-    expect(extractErrorMessage("erro", "Padrão")).toBe("Padrão");
   });
 });

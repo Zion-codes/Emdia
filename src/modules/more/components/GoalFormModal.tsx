@@ -12,7 +12,11 @@ import {
   useColors,
   useThemedStyles,
 } from "../../../shared/theme";
-import { formatAmountInput } from "../../../shared/utils/format";
+import {
+  formatAmountInput,
+  formatMonthLabel,
+} from "../../../shared/utils/format";
+import { extractErrorMessage } from "../../../shared/utils/error";
 import { useDatabase } from "../../../state/database";
 import { useMoney, usePrivacy } from "../../../state/privacy";
 import {
@@ -22,11 +26,7 @@ import {
   spacing,
   typography,
 } from "../../../theme/tokens";
-import {
-  extractErrorMessage,
-  formatMonthLabel,
-  parseMoneyInput,
-} from "../utils/moreHelpers";
+import { parseMoneyInput } from "../utils/moreHelpers";
 
 type GoalFormModalProps = {
   visible: boolean;

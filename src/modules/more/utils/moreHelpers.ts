@@ -1,22 +1,4 @@
-import {
-  capitalizeFirst,
-  formatMonthYear,
-  parseAmount,
-} from "../../../shared/utils/format";
-import { isDatabaseError } from "../../../database";
-
-export function formatMonthLabel(monthKey: string): string {
-  const [year, month] = monthKey.split("-").map(Number);
-  return capitalizeFirst(formatMonthYear(new Date(year, month - 1, 1)));
-}
-
-export function extractErrorMessage(error: unknown, fallback: string): string {
-  if (isDatabaseError(error) && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return fallback;
-}
+import { parseAmount } from "../../../shared/utils/format";
 
 export function requireText(value: string): string | null {
   const trimmed = value.trim();
@@ -52,9 +34,4 @@ export function parseMoneyInput(
   }
 
   return { status: "valid", amount: parsed };
-}
-
-export function parseDateKeyToLocalDate(dateKey: string): Date {
-  const [year, month, day] = dateKey.slice(0, 10).split("-").map(Number);
-  return new Date(year, month - 1, day);
 }

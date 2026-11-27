@@ -6,9 +6,11 @@ import {
   formatDayMonth,
   formatFullDate,
   formatMonth,
+  formatMonthLabel,
   formatMonthYear,
   HIDDEN_MONEY,
   parseAmount,
+  parseDateKeyToLocalDate,
   toMonthKey,
 } from "./format";
 
@@ -35,5 +37,15 @@ describe("format utilities", () => {
     expect(parseAmount("1.234,56")).toBe(1234.56);
     expect(parseAmount(" 99,90 ")).toBe(99.9);
     expect(formatAmountInput(42.5)).toBe("42,50");
+  });
+
+  it("parses date keys and formats month labels", () => {
+    const parsed = parseDateKeyToLocalDate("2026-11-05");
+    expect(parsed.getFullYear()).toBe(2026);
+    expect(parsed.getMonth()).toBe(10);
+    expect(parsed.getDate()).toBe(5);
+
+    expect(formatMonthLabel("2026-11").toLowerCase()).toContain("2026");
+    expect(formatMonthLabel("2026-01").toLowerCase()).toContain("janeiro");
   });
 });

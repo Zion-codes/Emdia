@@ -27,7 +27,12 @@ import {
   useColors,
   useThemedStyles,
 } from "../../../shared/theme";
-import { formatAmountInput, parseAmount } from "../../../shared/utils/format";
+import {
+  formatAmountInput,
+  parseAmount,
+  parseDateKeyToLocalDate,
+} from "../../../shared/utils/format";
+import { extractErrorMessage } from "../../../shared/utils/error";
 import { useDatabase } from "../../../state/database";
 import { useMoney } from "../../../state/privacy";
 import {
@@ -37,11 +42,7 @@ import {
   spacing,
   typography,
 } from "../../../theme/tokens";
-import {
-  extractErrorMessage,
-  getInstallmentPreview,
-  parseDateKeyToLocalDate,
-} from "../utils/transactionHelpers";
+import { getInstallmentPreview } from "../utils/transactionHelpers";
 
 type TransactionFormModalProps = {
   visible: boolean;

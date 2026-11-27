@@ -27,11 +27,8 @@ import {
   spacing,
   typography,
 } from "../../../theme/tokens";
-import {
-  extractErrorMessage,
-  parseMoneyInput,
-  requireText,
-} from "../utils/moreHelpers";
+import { parseMoneyInput, requireText } from "../utils/moreHelpers";
+import { extractErrorMessage } from "../../../shared/utils/error";
 
 const CATEGORY_ICONS: IconName[] = [
   "home-outline",

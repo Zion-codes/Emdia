@@ -1,6 +1,5 @@
-import { DatabaseError, type InvoiceInstallmentItem } from "../../../database";
+import { type InvoiceInstallmentItem } from "../../../database";
 import {
-  extractErrorMessage,
   formatInvoiceDueDate,
   formatInvoiceMonthLabel,
   getInvoiceInstallmentBadge,
@@ -75,23 +74,5 @@ describe("invoiceHelpers", () => {
   it("formats month label and due date", () => {
     expect(formatInvoiceMonthLabel("2026-11")).toMatch(/2026/);
     expect(formatInvoiceDueDate("2026-11-10")).toMatch(/2026/);
-  });
-
-  it("extracts database error message or returns fallback", () => {
-    expect(
-      extractErrorMessage(
-        new DatabaseError("VALIDATION_ERROR", "Nome inválido"),
-        "Fallback"
-      )
-    ).toBe("Nome inválido");
-
-    expect(
-      extractErrorMessage(
-        new DatabaseError("VALIDATION_ERROR", "   "),
-        "Fallback"
-      )
-    ).toBe("Fallback");
-
-    expect(extractErrorMessage(new Error("boom"), "Fallback")).toBe("Fallback");
   });
 });

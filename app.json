@@ -5,7 +5,7 @@
     "scheme": "emdia",
     "version": "2.0.0",
     "orientation": "portrait",
-    "platforms": ["android"],
+    "platforms": ["android", "ios"],
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#05070D",
     "icon": "./assets/icon.png",
@@ -13,6 +13,11 @@
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#05070D"
+    },
+    "ios": {
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Permita o uso do Face ID para bloquear e desbloquear seus dados financeiros com segurança."
+      }
     },
     "android": {
       "package": "app.zioncodes.emdia",
@@ -23,6 +28,10 @@
       },
       "edgeToEdgeEnabled": true
     },
-    "plugins": ["expo-sqlite"]
+    "plugins": [
+      "expo-sqlite",
+      "@react-native-community/datetimepicker",
+      "expo-local-authentication"
+    ]
   }
 }

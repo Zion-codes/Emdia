@@ -1,0 +1,185 @@
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react-native";
+import { useAppearance } from "../../../state/appearance";
+import { useAppLock } from "../../../state/appLock";
+import { usePrivacy } from "../../../state/privacy";
+import { useProfile } from "../../../state/profile";
+import { avatarPalette } from "../../../theme/colors";
+import { SettingsScreen } from "./SettingsScreen";
+
+jest.mock("../../../state/profile", () => ({
+  useProfile: jest.fn(),
+}));
+jest.mock("../../../state/appearance", () => ({
+  useAppearance: jest.fn(),
+  useAppearancePreference: (): "system" => "system",
+}));
+jest.mock("../../../state/privacy", () => ({
+  usePrivacy: jest.fn(),
+}));
+jest.mock("../../../state/appLock", () => ({
+  useAppLock: jest.fn(),
+}));
+
+const mockUseProfile = jest.mocked(useProfile);
+const mockUseAppearance = jest.mocked(useAppearance);
+const mockUsePrivacy = jest.mocked(usePrivacy);
+const mockUseAppLock = jest.mocked(useAppLock);
+
+describe("SettingsScreen", () => {
+  const updateProfile = jest.fn().mockResolvedValue(undefined);
+  const setPreference = jest.fn();
+  const togglePrivacy = jest.fn();
+  const enableLock = jest.fn().mockResolvedValue(true);
+  const disableLock = jest.fn().mockResolvedValue(true);
+
+  beforeEach(() => {
+    mockUseProfile.mockReturnValue({
+      profile: { name: "Ana Paula", avatarColor: avatarPalette[0] },
+      isLoaded: true,
+      updateProfile,
+    });
+    mockUseAppearance.mockReturnValue({
+      preference: "system",
+      setPreference,
+    });
+    mockUsePrivacy.mockReturnValue({
+      isHidden: false,
+      toggle: togglePrivacy,
+    });
+    mockUseAppLock.mockReturnValue({
+      isInitialized: true,
+      isEnabled: false,
+      isAvailable: true,
+      isLocked: false,
+      isAuthenticating: false,
+      errorMessage: null,
+      enable: enableLock,
+      disable: disableLock,
+      unlock: jest.fn(),
+    });
+  });
+
+  it("renders local profile, appearance, privacy and biometric lock controls", async () => {
+    await render(<SettingsScreen />);
+
+    expect(screen.getByText("Configurações")).toBeTruthy();
+    expect(screen.getByText("AP")).toBeTruthy();
+    expect(screen.getByTestId("profile-name").props.children).toBe("Ana Paula");
+
+    await fireEvent.press(screen.getByTestId("appearance-option-dark"));
+    expect(setPreference).toHaveBeenCalledWith("dark");
+
+    await fireEvent(screen.getByTestId("privacy-toggle"), "valueChange", true);
+    expect(togglePrivacy).toHaveBeenCalledTimes(1);
+
+    await fireEvent(
+      screen.getByTestId("biometric-lock-toggle"),
+      "valueChange",
+      true
+    );
+    expect(enableLock).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits profile name and color with empty validation and error handling", async () => {
+    await render(<SettingsScreen />);
+
+    await fireEvent.press(screen.getByTestId("edit-profile-button"));
+    expect(screen.getByTestId("edit-profile-modal")).toBeTruthy();
+
+    await fireEvent.changeText(screen.getByTestId("profile-name-input"), "   ");
+    await fireEvent.press(screen.getByTestId("save-profile-button"));
+    expect(screen.getByTestId("profile-name-error")).toBeTruthy();
+
+    await fireEvent.changeText(
+      screen.getByTestId("profile-name-input"),
+      "João Pedro"
+    );
+    expect(screen.queryByTestId("profile-name-error")).toBeNull();
+
+    let resolveUpdate!: () => void;
+    updateProfile.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveUpdate = resolve;
+      })
+    );
+
+    await fireEvent.press(
+      screen.getByTestId(`avatar-color-${avatarPalette[2]}`)
+    );
+    await fireEvent.press(screen.getByTestId("save-profile-button"));
+
+    expect(
+      screen.getByTestId("save-profile-button").props.accessibilityState
+        .disabled
+    ).toBe(true);
+
+    resolveUpdate();
+
+    await waitFor(() => {
+      expect(updateProfile).toHaveBeenCalledWith({
+        name: "João Pedro",
+        avatarColor: avatarPalette[2],
+      });
+    });
+
+    updateProfile.mockRejectedValueOnce(new Error("db fail"));
+    await fireEvent.press(screen.getByTestId("edit-profile-button"));
+    await fireEvent.press(screen.getByTestId("save-profile-button"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Não foi possível salvar o perfil.")
+      ).toBeTruthy();
+    });
+
+    await fireEvent.press(screen.getByTestId("cancel-profile-button"));
+  });
+
+  it("shows unavailable biometrics helper, error message, disable flow and fallback initials", async () => {
+    mockUseProfile.mockReturnValue({
+      profile: { name: "   ", avatarColor: avatarPalette[1] },
+      isLoaded: true,
+      updateProfile,
+    });
+    mockUseAppLock.mockReturnValue({
+      isInitialized: true,
+      isEnabled: true,
+      isAvailable: false,
+      isLocked: false,
+      isAuthenticating: false,
+      errorMessage: "Erro biométrico.",
+      enable: enableLock,
+      disable: disableLock,
+      unlock: jest.fn(),
+    });
+
+    await render(<SettingsScreen />);
+
+    expect(screen.getByText("EU")).toBeTruthy();
+    expect(screen.getByTestId("biometrics-unavailable-text")).toBeTruthy();
+    expect(screen.getByTestId("biometric-lock-error")).toBeTruthy();
+
+    fireEvent(
+      screen.getByTestId("biometric-lock-toggle"),
+      "valueChange",
+      false
+    );
+    expect(disableLock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders single-word profile initials correctly", async () => {
+    mockUseProfile.mockReturnValue({
+      profile: { name: "Carlos", avatarColor: avatarPalette[0] },
+      isLoaded: true,
+      updateProfile,
+    });
+
+    await render(<SettingsScreen />);
+    expect(screen.getByText("CA")).toBeTruthy();
+  });
+});

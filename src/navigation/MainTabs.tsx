@@ -1,6 +1,8 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { type JSX } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PlaceholderScreen } from "../modules/app/screens/PlaceholderScreen";
+import { SettingsScreen } from "../modules/settings/screens/SettingsScreen";
 import { Icon, IconName } from "../shared/components/Icon";
 import {
   createThemedStyles,
@@ -35,6 +37,7 @@ const Tab = createBottomTabNavigator<TabParamList>();
 export default function MainTabs(): JSX.Element {
   const colors = useColors();
   const styles = useThemedStyles(themedStyles);
+  const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
@@ -45,7 +48,10 @@ export default function MainTabs(): JSX.Element {
         tabBarLabelPosition: "below-icon",
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.placeholder,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          { bottom: layout.tabBarBottomMargin + insets.bottom },
+        ],
         tabBarItemStyle: [styles.tabBarItem, { flex: tabWeights[route.name] }],
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarIcon: ({ focused, color, size }) => (
@@ -83,7 +89,7 @@ export default function MainTabs(): JSX.Element {
       />
       <Tab.Screen
         name="Settings"
-        component={PlaceholderScreen}
+        component={SettingsScreen}
         options={{ title: "Configurações" }}
       />
     </Tab.Navigator>

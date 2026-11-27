@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PlaceholderScreen } from "../modules/app/screens/PlaceholderScreen";
 import { HomeScreen } from "../modules/home/screens/HomeScreen";
 import { SettingsScreen } from "../modules/settings/screens/SettingsScreen";
+import { TransactionsScreen } from "../modules/transactions/screens/TransactionsScreen";
 import { Icon, IconName } from "../shared/components/Icon";
 import {
   createThemedStyles,
@@ -75,7 +76,7 @@ export default function MainTabs(): JSX.Element {
       />
       <Tab.Screen
         name="Transactions"
-        component={PlaceholderScreen}
+        component={TransactionsScreen}
         options={{ title: "Transações" }}
       />
       <Tab.Screen

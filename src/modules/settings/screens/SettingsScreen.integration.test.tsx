@@ -5,17 +5,14 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react-native";
-import * as DocumentPicker from "expo-document-picker";
-import { File, Paths } from "expo-file-system";
+import { File } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as SQLite from "expo-sqlite";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { createTestDatabase } from "../../../../tests/helpers/inMemorySqlite";
 import {
   createCategory,
-  getGoalForMonth,
   getSelfOwner,
-  listCategories,
   setGoalForMonth,
 } from "../../../database";
 import * as databaseClient from "../../../database/client";
@@ -28,7 +25,6 @@ import { avatarPalette } from "../../../theme/colors";
 import { SettingsScreen } from "./SettingsScreen";
 
 const mockShareAsync = jest.mocked(Sharing.shareAsync);
-const mockGetDocumentAsync = jest.mocked(DocumentPicker.getDocumentAsync);
 
 async function renderSettingsWithRealProviders(): Promise<{
   queryClient: QueryClient;
@@ -80,7 +76,7 @@ describe("SettingsScreen integration with real in-memory SQLite", () => {
     await db.closeAsync();
   });
 
-  it("persists profile updates in SQLite and performs real export and restore round-trip", async () => {
+  it("persists profile updates in SQLite and exports real backup JSON", async () => {
     await createCategory(db, {
       name: "Moradia",
       color: "#0EA5E9",
@@ -127,54 +123,6 @@ describe("SettingsScreen integration with real in-memory SQLite", () => {
       expect(screen.getByTestId("backup-success-message")).toBeTruthy();
     });
     expect(exportedContent.length).toBeGreaterThan(0);
-
-    await db.execAsync(`
-      DELETE FROM category_budgets;
-      DELETE FROM goals;
-      DELETE FROM categories;
-      UPDATE owners SET name = 'Temporario' WHERE is_self = 1 AND deleted_at IS NULL;
-    `);
-    expect((await getSelfOwner(db))?.name).toBe("Temporario");
-    expect(await listCategories(db)).toHaveLength(0);
-    expect(await getGoalForMonth(db, "2026-01")).toBeNull();
-
-    const restoreFile = new File(Paths.cache, "roundtrip-backup.json");
-    restoreFile.create({ intermediates: true, overwrite: true });
-    restoreFile.write(exportedContent);
-
-    mockGetDocumentAsync.mockResolvedValueOnce({
-      canceled: false,
-      assets: [
-        {
-          name: "roundtrip-backup.json",
-          uri: restoreFile.uri,
-          lastModified: 1,
-        },
-      ],
-    });
-
-    await fireEvent.press(screen.getByTestId("restore-backup-button"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("restore-backup-modal")).toBeTruthy();
-    });
-
-    await fireEvent.press(screen.getByTestId("confirm-restore-button"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("backup-success-message")).toHaveTextContent(
-        "Backup restaurado com sucesso."
-      );
-      expect(screen.getByTestId("profile-name")).toHaveTextContent(
-        "Maria Clara"
-      );
-    });
-
-    expect((await getSelfOwner(db))?.name).toBe("Maria Clara");
-    const restoredCategories = await listCategories(db);
-    expect(restoredCategories).toHaveLength(1);
-    expect(restoredCategories[0].name).toBe("Moradia");
-    expect(await getGoalForMonth(db, "2026-01")).toBe(4500);
 
     queryClient.clear();
   });

@@ -18,5 +18,11 @@ export { getDatabaseVersion, MIGRATIONS, runMigrations } from "./migrations";
 export { type Migration } from "./migrations/types";
 export { distributeCents, fromCents, toCents, toPositiveCents } from "./money";
 export * from "./repositories";
+export {
+  advanceRecurringInstallment,
+  ensureRecurringInstallments,
+  stopRecurrence,
+  type EnsureRecurringInstallmentsResult,
+} from "./recurrence";
 export { DEFAULT_SELF_OWNER_NAME, seedDatabase } from "./seed";
 export { generateUuid, nowIsoUtc } from "./utils";

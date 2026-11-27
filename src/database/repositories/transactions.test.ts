@@ -663,4 +663,180 @@ describe("transactions repository", () => {
       listTransactions(db, { sortOrder: "random" as TransactionSortOrder })
     ).rejects.toThrow("Direção de ordenação inválida. Use asc ou desc.");
   });
+
+  it("projects active recurring transactions into future months and respects filters and sorting", async () => {
+    const selfOwner = await getSelfOwner(db);
+    const catFood = await createCategory(db, { name: "Alimentação" });
+    const invoiceId = await insertInvoice(db, "Nubank");
+
+    const recurring = await createTransaction(db, {
+      name: "Academia",
+      type: "EXPENSE",
+      amount: 150,
+      dueDate: "2026-01-31",
+      ownerId: selfOwner!.id,
+      categoryId: catFood.id,
+      invoiceId,
+      recurrence: true,
+    });
+
+    await createTransaction(db, {
+      name: "Streaming Encerrado",
+      type: "EXPENSE",
+      amount: 50,
+      dueDate: "2026-01-15",
+      ownerId: selfOwner!.id,
+      recurrence: true,
+      active: false,
+    });
+
+    const orphanRecurring = await createTransaction(db, {
+      name: "Sem Parcela",
+      type: "EXPENSE",
+      amount: 75,
+      dueDate: "2026-01-20",
+      ownerId: selfOwner!.id,
+      recurrence: true,
+    });
+    await db.runAsync(
+      `DELETE FROM installments WHERE transaction_id = ?`,
+      orphanRecurring.id
+    );
+
+    const regular = await createTransaction(db, {
+      name: "Beta Parcelada",
+      type: "EXPENSE",
+      amount: 200,
+      dueDate: "2026-02-10",
+      ownerId: selfOwner!.id,
+      installmentsCount: 2,
+    });
+
+    const janItems = await listTransactions(db, {
+      month: "2026-01",
+      referenceDate: new Date(2026, 0, 10),
+    });
+    expect(janItems).toHaveLength(2);
+    expect(janItems.every((item) => item.isProjected === false)).toBe(true);
+
+    const febItems = await listTransactions(db, {
+      month: "2026-02",
+      referenceDate: new Date(2026, 1, 5),
+      sortBy: "due_date",
+      sortOrder: "asc",
+    });
+    expect(febItems.map((item) => item.name)).toEqual([
+      "Beta Parcelada",
+      "Academia",
+    ]);
+    const projectedFeb = febItems.find(
+      (item) => item.transactionId === recurring.id
+    )!;
+    expect(projectedFeb.installmentId).toBe(
+      `projected:${recurring.id}:2026-02`
+    );
+    expect(projectedFeb.isProjected).toBe(true);
+    expect(projectedFeb.dueDate).toBe("2026-02-28");
+    expect(projectedFeb.number).toBe(2);
+    expect(projectedFeb.status).toBe("PENDING");
+    expect(projectedFeb.paidAmount).toBe(0);
+    expect(projectedFeb.remainingAmount).toBe(150);
+    expect(projectedFeb.paidAt).toBeNull();
+    expect(projectedFeb.isOverdue).toBe(false);
+
+    const marItemsByNameDesc = await listTransactions(db, {
+      month: "2026-03",
+      referenceDate: new Date(2026, 2, 15),
+      sortBy: "name",
+      sortOrder: "desc",
+    });
+    expect(marItemsByNameDesc.map((item) => item.name)).toEqual([
+      "Beta Parcelada",
+      "Academia",
+    ]);
+    expect(marItemsByNameDesc[1].dueDate).toBe("2026-03-31");
+    expect(marItemsByNameDesc[1].number).toBe(3);
+
+    const marOverdueFirstDesc = await listTransactions(db, {
+      month: "2026-03",
+      referenceDate: new Date(2026, 2, 15),
+      sortBy: "overdue_first",
+      sortOrder: "desc",
+    });
+    expect(marOverdueFirstDesc[0].transactionId).toBe(recurring.id);
+    expect(marOverdueFirstDesc[1].transactionId).toBe(regular.id);
+
+    const sameDayA = await createTransaction(db, {
+      name: "Mesma Data",
+      type: "EXPENSE",
+      amount: 10,
+      dueDate: "2026-02-28",
+      ownerId: selfOwner!.id,
+      recurrence: true,
+    });
+    const sameDayB = await createTransaction(db, {
+      name: "Mesma Data",
+      type: "EXPENSE",
+      amount: 20,
+      dueDate: "2026-01-28",
+      ownerId: selfOwner!.id,
+      recurrence: true,
+    });
+
+    const tieByDueDate = await listTransactions(db, {
+      month: "2026-03",
+      referenceDate: new Date(2026, 2, 29),
+      sortBy: "due_date",
+      sortOrder: "asc",
+    });
+    const tieDueNames = tieByDueDate
+      .filter(
+        (item) =>
+          item.transactionId === sameDayA.id ||
+          item.transactionId === sameDayB.id
+      )
+      .map((item) => item.number);
+    expect(tieDueNames).toEqual([2, 3]);
+
+    const tieByName = await listTransactions(db, {
+      month: "2026-03",
+      referenceDate: new Date(2026, 2, 29),
+      sortBy: "name",
+      sortOrder: "asc",
+    });
+    const tieNameNumbers = tieByName
+      .filter(
+        (item) =>
+          item.transactionId === sameDayA.id ||
+          item.transactionId === sameDayB.id
+      )
+      .map((item) => item.number);
+    expect(tieNameNumbers).toEqual([2, 3]);
+
+    const tieByOverdue = await listTransactions(db, {
+      month: "2026-03",
+      referenceDate: new Date(2026, 2, 29),
+      sortBy: "overdue_first",
+      sortOrder: "asc",
+    });
+    expect(tieByOverdue[0].isOverdue).toBe(true);
+    expect(tieByOverdue[tieByOverdue.length - 1].isOverdue).toBe(false);
+
+    const marFiltered = await listTransactions(db, {
+      month: "2026-03",
+      categoryId: catFood.id,
+      ownerId: selfOwner!.id,
+      invoiceId,
+      type: "EXPENSE",
+      search: "acad",
+    });
+    expect(marFiltered).toHaveLength(1);
+    expect(marFiltered[0].isProjected).toBe(true);
+
+    const marPaidOnly = await listTransactions(db, {
+      month: "2026-03",
+      status: "PAID",
+    });
+    expect(marPaidOnly).toHaveLength(0);
+  });
 });

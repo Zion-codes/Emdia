@@ -7,6 +7,7 @@ import { useColorSchemeName } from "./src/shared/theme";
 import { AppearanceProvider } from "./src/state/appearance";
 import { DatabaseProvider } from "./src/state/database";
 import { PrivacyProvider } from "./src/state/privacy";
+import { RecurrenceSync } from "./src/state/recurrence";
 
 function AppStatusBar(): JSX.Element {
   const scheme = useColorSchemeName();
@@ -32,6 +33,7 @@ export default function App(): JSX.Element {
         <AppStatusBar />
         <DatabaseProvider>
           <QueryClientProvider client={queryClient}>
+            <RecurrenceSync />
             <PrivacyProvider>
               <RootNavigator />
             </PrivacyProvider>

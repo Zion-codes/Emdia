@@ -54,6 +54,7 @@ export interface TransactionListItem {
   paidAt: string | null;
   status: InstallmentStatus;
   isOverdue: boolean;
+  isProjected: boolean;
   categoryId: string | null;
   categoryName: string | null;
   ownerId: string;
@@ -1112,6 +1113,62 @@ function resolveOrderBySql(
   return `is_overdue ${overdueDirection}, i.due_date ${direction}, t.name COLLATE NOCASE ${direction}, i.number ${direction}`;
 }
 
+interface ProjectedRecurrenceRow {
+  transaction_id: string;
+  name: string;
+  type: TransactionType;
+  category_id: string | null;
+  category_name: string | null;
+  owner_id: string;
+  owner_name: string;
+  invoice_id: string | null;
+  invoice_name: string | null;
+  group_id: string | null;
+  installments_count: number;
+  recurrence: number;
+  active: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  first_due_date: string | null;
+  last_due_date: string | null;
+  last_amount: number | null;
+}
+
+function diffMonths(fromMonthKey: string, toMonthKey: string): number {
+  const [fromYear, fromMonth] = fromMonthKey.split("-").map(Number);
+  const [toYear, toMonth] = toMonthKey.split("-").map(Number);
+  return (toYear - fromYear) * 12 + (toMonth - fromMonth);
+}
+
+function sortTransactionListItems(
+  items: TransactionListItem[],
+  sortBy: TransactionSortBy,
+  sortOrder: TransactionSortOrder
+): void {
+  const direction = sortOrder === "desc" ? -1 : 1;
+
+  items.sort((a, b) => {
+    const dueCmp = a.dueDate.localeCompare(b.dueDate) * direction;
+    const nameCmp =
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) *
+      direction;
+    const numCmp = (a.number - b.number) * direction;
+
+    if (sortBy === "due_date") {
+      return dueCmp || nameCmp || numCmp;
+    }
+
+    if (sortBy === "name") {
+      return nameCmp || dueCmp || numCmp;
+    }
+
+    const overdueCmp =
+      ((b.isOverdue ? 1 : 0) - (a.isOverdue ? 1 : 0)) * direction;
+    return overdueCmp || dueCmp || nameCmp || numCmp;
+  });
+}
+
 export async function listTransactions(
   db: SQLite.SQLiteDatabase,
   filter: TransactionListFilter = {}
@@ -1119,14 +1176,52 @@ export async function listTransactions(
   const referenceDate = filter.referenceDate ?? new Date();
   const todayKey = toLocalDateKey(referenceDate);
 
+  const sharedWhereClauses: string[] = ["t.deleted_at IS NULL"];
+  const sharedWhereParams: (string | number)[] = [];
+
+  if (filter.categoryId !== undefined) {
+    sharedWhereClauses.push("t.category_id = ?");
+    sharedWhereParams.push(filter.categoryId);
+  }
+
+  if (filter.ownerId !== undefined) {
+    sharedWhereClauses.push("t.owner_id = ?");
+    sharedWhereParams.push(filter.ownerId);
+  }
+
+  if (filter.invoiceId !== undefined) {
+    sharedWhereClauses.push("t.invoice_id = ?");
+    sharedWhereParams.push(filter.invoiceId);
+  }
+
+  if (filter.type !== undefined) {
+    sharedWhereClauses.push("t.type = ?");
+    sharedWhereParams.push(validateTransactionType(filter.type));
+  }
+
+  if (filter.groupId !== undefined) {
+    sharedWhereClauses.push("t.group_id = ?");
+    sharedWhereParams.push(filter.groupId);
+  }
+
+  if (filter.search !== undefined) {
+    const trimmedSearch = filter.search.trim();
+    if (trimmedSearch.length > 0) {
+      const escapedSearch = trimmedSearch.replace(/[\\%_]/g, "\\$&");
+      sharedWhereClauses.push("LOWER(t.name) LIKE LOWER(?) ESCAPE '\\'");
+      sharedWhereParams.push(`%${escapedSearch}%`);
+    }
+  }
+
   const whereClauses: string[] = [
-    "t.deleted_at IS NULL",
+    ...sharedWhereClauses,
     "i.deleted_at IS NULL",
   ];
-  const whereParams: (string | number)[] = [];
+  const whereParams: (string | number)[] = [...sharedWhereParams];
 
+  let validMonth: string | null = null;
   if (filter.month !== undefined) {
-    const validMonth = assertMonthKey(filter.month);
+    validMonth = assertMonthKey(filter.month);
     const range = getMonthDateRange(validMonth);
 
     if (filter.includeOverdue) {
@@ -1138,26 +1233,6 @@ export async function listTransactions(
       whereClauses.push("substr(i.due_date, 1, 10) BETWEEN ? AND ?");
       whereParams.push(range.start, range.end);
     }
-  }
-
-  if (filter.categoryId !== undefined) {
-    whereClauses.push("t.category_id = ?");
-    whereParams.push(filter.categoryId);
-  }
-
-  if (filter.ownerId !== undefined) {
-    whereClauses.push("t.owner_id = ?");
-    whereParams.push(filter.ownerId);
-  }
-
-  if (filter.invoiceId !== undefined) {
-    whereClauses.push("t.invoice_id = ?");
-    whereParams.push(filter.invoiceId);
-  }
-
-  if (filter.type !== undefined) {
-    whereClauses.push("t.type = ?");
-    whereParams.push(validateTransactionType(filter.type));
   }
 
   if (filter.status !== undefined) {
@@ -1172,24 +1247,9 @@ export async function listTransactions(
     whereParams.push(filter.status);
   }
 
-  if (filter.groupId !== undefined) {
-    whereClauses.push("t.group_id = ?");
-    whereParams.push(filter.groupId);
-  }
-
-  if (filter.search !== undefined) {
-    const trimmedSearch = filter.search.trim();
-    if (trimmedSearch.length > 0) {
-      const escapedSearch = trimmedSearch.replace(/[\\%_]/g, "\\$&");
-      whereClauses.push("LOWER(t.name) LIKE LOWER(?) ESCAPE '\\'");
-      whereParams.push(`%${escapedSearch}%`);
-    }
-  }
-
-  const orderBySql = resolveOrderBySql(
-    filter.sortBy ?? "overdue_first",
-    filter.sortOrder ?? "asc"
-  );
+  const sortBy = filter.sortBy ?? "overdue_first";
+  const sortOrder = filter.sortOrder ?? "asc";
+  const orderBySql = resolveOrderBySql(sortBy, sortOrder);
 
   const rows = await db.getAllAsync<TransactionListRow>(
     `SELECT
@@ -1231,7 +1291,7 @@ export async function listTransactions(
     ...whereParams
   );
 
-  return rows.map((row) => ({
+  const items: TransactionListItem[] = rows.map((row) => ({
     installmentId: row.installment_id,
     transactionId: row.transaction_id,
     name: row.name,
@@ -1245,6 +1305,7 @@ export async function listTransactions(
     paidAt: row.paid_at,
     status: row.status,
     isOverdue: row.is_overdue === 1,
+    isProjected: false,
     categoryId: row.category_id,
     categoryName: row.category_name,
     ownerId: row.owner_id,
@@ -1258,4 +1319,110 @@ export async function listTransactions(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));
+
+  if (validMonth !== null && filter.status !== "PAID") {
+    const recurringRows = await db.getAllAsync<ProjectedRecurrenceRow>(
+      `SELECT
+         t.id AS transaction_id,
+         t.name AS name,
+         t.type AS type,
+         t.category_id AS category_id,
+         c.name AS category_name,
+         t.owner_id AS owner_id,
+         o.name AS owner_name,
+         t.invoice_id AS invoice_id,
+         inv.name AS invoice_name,
+         t.group_id AS group_id,
+         t.installments_count AS installments_count,
+         t.recurrence AS recurrence,
+         t.active AS active,
+         t.notes AS notes,
+         t.created_at AS created_at,
+         t.updated_at AS updated_at,
+         (
+           SELECT i1.due_date
+           FROM installments i1
+           WHERE i1.transaction_id = t.id AND i1.deleted_at IS NULL
+           ORDER BY i1.number ASC
+           LIMIT 1
+         ) AS first_due_date,
+         (
+           SELECT i2.due_date
+           FROM installments i2
+           WHERE i2.transaction_id = t.id AND i2.deleted_at IS NULL
+           ORDER BY i2.number DESC
+           LIMIT 1
+         ) AS last_due_date,
+         (
+           SELECT i3.amount
+           FROM installments i3
+           WHERE i3.transaction_id = t.id AND i3.deleted_at IS NULL
+           ORDER BY i3.number DESC
+           LIMIT 1
+         ) AS last_amount
+       FROM transactions t
+       INNER JOIN owners o ON o.id = t.owner_id
+       LEFT JOIN categories c ON c.id = t.category_id AND c.deleted_at IS NULL
+       LEFT JOIN invoices inv ON inv.id = t.invoice_id AND inv.deleted_at IS NULL
+       WHERE t.recurrence = 1
+         AND t.active = 1
+         AND ${sharedWhereClauses.join(" AND ")}`,
+      ...sharedWhereParams
+    );
+
+    const projectedItems: TransactionListItem[] = [];
+
+    for (const row of recurringRows) {
+      if (!row.first_due_date) {
+        continue;
+      }
+
+      const firstMonthKey = row.first_due_date.slice(0, 7);
+      const lastMonthKey = (row.last_due_date as string).slice(0, 7);
+
+      if (lastMonthKey >= validMonth) {
+        continue;
+      }
+
+      const monthOffset = diffMonths(firstMonthKey, validMonth);
+      const dueDate = addMonthsToDateKey(row.first_due_date, monthOffset);
+      const amount = fromCents(row.last_amount as number);
+
+      projectedItems.push({
+        installmentId: `projected:${row.transaction_id}:${validMonth}`,
+        transactionId: row.transaction_id,
+        name: row.name,
+        type: row.type,
+        amount,
+        paidAmount: 0,
+        remainingAmount: amount,
+        number: monthOffset + 1,
+        installmentsCount: row.installments_count,
+        dueDate,
+        paidAt: null,
+        status: "PENDING",
+        isOverdue: dueDate < todayKey,
+        isProjected: true,
+        categoryId: row.category_id,
+        categoryName: row.category_name,
+        ownerId: row.owner_id,
+        ownerName: row.owner_name,
+        invoiceId: row.invoice_id,
+        invoiceName: row.invoice_name,
+        groupId: row.group_id,
+        recurrence: row.recurrence === 1,
+        active: row.active === 1,
+        notes: row.notes,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      });
+    }
+
+    if (projectedItems.length > 0) {
+      items.push(...projectedItems);
+      sortTransactionListItems(items, sortBy, sortOrder);
+    }
+  }
+
+  return items;
 }

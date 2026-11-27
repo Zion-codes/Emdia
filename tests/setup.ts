@@ -38,6 +38,33 @@ jest.mock("expo-sqlite/kv-store", () => ({
   },
 }));
 
+jest.mock("expo-local-authentication", () => ({
+  AuthenticationType: {
+    FINGERPRINT: 1,
+    FACIAL_RECOGNITION: 2,
+    IRIS: 3,
+  },
+  hasHardwareAsync: jest.fn(async () => true),
+  isEnrolledAsync: jest.fn(async () => true),
+  authenticateAsync: jest.fn(async () => ({ success: true })),
+  supportedAuthenticationTypesAsync: jest.fn(async () => [1]),
+}));
+
+jest.mock("@react-native-community/datetimepicker", () => {
+  const React = jest.requireActual<typeof import("react")>("react");
+  const { View } =
+    jest.requireActual<typeof import("react-native")>("react-native");
+  return {
+    __esModule: true,
+    default: function MockDateTimePicker(props: Record<string, unknown>) {
+      return React.createElement(View, {
+        testID: "native-date-time-picker",
+        ...props,
+      });
+    },
+  };
+});
+
 beforeEach(() => {
   jest.useFakeTimers({ advanceTimers: true });
 });

@@ -11,6 +11,7 @@ import {
   getSelfOwner,
   listOwners,
   updateOwner,
+  updateSelfOwnerName,
 } from "./owners";
 
 describe("owners repository", () => {
@@ -91,6 +92,22 @@ describe("owners repository", () => {
       "UPDATE owners SET deleted_at = '2026-01-01T00:00:00.000Z'"
     );
     expect(await getSelfOwner(db)).toBeNull();
+    await expect(updateSelfOwnerName(db, "Novo Nome")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("updates self owner name and validates empty values", async () => {
+    const updated = await updateSelfOwnerName(db, "  Ana Paula  ");
+    expect(updated.isSelf).toBe(true);
+    expect(updated.name).toBe("Ana Paula");
+
+    const fetched = await getSelfOwner(db);
+    expect(fetched?.name).toBe("Ana Paula");
+
+    await expect(updateSelfOwnerName(db, "   ")).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
   });
 
   it("computes paginated owner statement across periods, filters, overdue ordering, and share summaries", async () => {

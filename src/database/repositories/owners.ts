@@ -250,6 +250,35 @@ export async function updateOwner(
   };
 }
 
+export async function updateSelfOwnerName(
+  db: SQLite.SQLiteDatabase,
+  name: string
+): Promise<Owner> {
+  const selfOwner = await getSelfOwner(db);
+
+  if (!selfOwner) {
+    throw new DatabaseError("NOT_FOUND", "Responsável padrão não encontrado.");
+  }
+
+  const trimmed = validateOwnerName(name);
+  const timestamp = nowIsoUtc();
+
+  await db.runAsync(
+    `UPDATE owners
+     SET name = ?, updated_at = ?
+     WHERE id = ? AND deleted_at IS NULL`,
+    trimmed,
+    timestamp,
+    selfOwner.id
+  );
+
+  return {
+    ...selfOwner,
+    name: trimmed,
+    updatedAt: timestamp,
+  };
+}
+
 export async function deleteOwner(
   db: SQLite.SQLiteDatabase,
   id: string

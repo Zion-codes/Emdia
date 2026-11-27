@@ -1,10 +1,8 @@
 import { type JSX } from "react";
-import { View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TabParamList, TabScreenProps } from "../../../navigation/types";
+import { ScreenContainer } from "../../../shared/components/ScreenContainer";
 import { Text } from "../../../shared/components/Text";
 import { createThemedStyles, useThemedStyles } from "../../../shared/theme";
-import { layout, tabBarSpace } from "../../../theme/layout";
 import { spacing, typography } from "../../../theme/tokens";
 
 const SCREEN_CONTENT: Record<
@@ -36,31 +34,19 @@ const SCREEN_CONTENT: Record<
 export function PlaceholderScreen({
   route,
 }: TabScreenProps<keyof TabParamList>): JSX.Element {
-  const insets = useSafeAreaInsets();
   const styles = useThemedStyles(themedStyles);
   const content = SCREEN_CONTENT[route.name];
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top + layout.screenPadding,
-          paddingBottom: insets.bottom + tabBarSpace,
-        },
-      ]}
-    >
+    <ScreenContainer contentContainerStyle={styles.container}>
       <Text style={styles.title}>{content.title}</Text>
       <Text style={styles.subtitle}>{content.subtitle}</Text>
-    </View>
+    </ScreenContainer>
   );
 }
 
 const themedStyles = createThemedStyles((colors) => ({
   container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: layout.screenPadding,
     justifyContent: "center",
     alignItems: "center",
     gap: spacing.s12,

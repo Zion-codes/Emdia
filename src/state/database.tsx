@@ -7,7 +7,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { openDatabase } from "../database";
 import { Text } from "../shared/components/Text";
 import { createThemedStyles, useThemedStyles } from "../shared/theme";
@@ -55,12 +55,12 @@ export function DatabaseProvider({
 
   if (state.status === "error") {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         <Text style={styles.title}>Erro ao abrir o banco de dados</Text>
         <Text style={styles.message}>
           Não foi possível inicializar os dados locais do aplicativo.
         </Text>
-      </View>
+      </SafeAreaView>
     );
   }
 

@@ -1,9 +1,9 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { type JSX } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { PlaceholderScreen } from "../modules/app/screens/PlaceholderScreen";
 import { HomeScreen } from "../modules/home/screens/HomeScreen";
 import { InvoicesScreen } from "../modules/invoices/screens/InvoicesScreen";
+import { MoreScreen } from "../modules/more/screens/MoreScreen";
 import { SettingsScreen } from "../modules/settings/screens/SettingsScreen";
 import { TransactionsScreen } from "../modules/transactions/screens/TransactionsScreen";
 import { Icon, IconName } from "../shared/components/Icon";
@@ -87,7 +87,7 @@ export default function MainTabs(): JSX.Element {
       />
       <Tab.Screen
         name="More"
-        component={PlaceholderScreen}
+        component={MoreScreen}
         options={{ title: "Mais" }}
       />
       <Tab.Screen

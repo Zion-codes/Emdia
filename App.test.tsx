@@ -39,9 +39,7 @@ describe("App", () => {
 
     await fireEvent.press(screen.getByText("Mais"));
     await waitFor(() => {
-      expect(
-        screen.getByText("Categorias, responsáveis e atalhos em construção")
-      ).toBeTruthy();
+      expect(screen.getByTestId("more-screen")).toBeTruthy();
     });
 
     spy.mockRestore();

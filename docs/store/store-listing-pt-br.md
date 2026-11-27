@@ -5,7 +5,7 @@
 - **Versão:** `2.0.0`
 - **Política de Privacidade (arquivo fonte):** [docs/privacy-policy.md](../privacy-policy.md)
 - **Política de Privacidade (página estática):** [docs/privacy-policy/index.html](../privacy-policy/index.html)
-- **URL pública da Política de Privacidade:** `https://emdia-privacidade.netlify.app` (projeto criado no Netlify; realizar o primeiro deploy ou vincular ao Git antes da submissão nas lojas)
+- **URL pública da Política de Privacidade:** `https://emdia-privacidade.netlify.app`
 
 ---
 

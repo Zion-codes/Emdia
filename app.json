@@ -15,6 +15,7 @@
       "backgroundColor": "#05070D"
     },
     "ios": {
+      "bundleIdentifier": "app.zioncodes.emdia",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Permita o uso do Face ID para bloquear e desbloquear seus dados financeiros com segurança."
       }

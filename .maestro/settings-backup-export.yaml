@@ -1,0 +1,14 @@
+appId: app.zioncodes.emdia
+---
+- launchApp
+- tapOn: "Configurações"
+- assertVisible:
+    id: "settings-screen"
+- scrollUntilVisible:
+    element:
+      id: "export-backup-button"
+    direction: DOWN
+- assertVisible:
+    id: "backup-security-notice"
+- tapOn:
+    id: "export-backup-button"

@@ -71,7 +71,6 @@ describe("database backup", () => {
 
   beforeEach(async () => {
     db = await createTestDatabase();
-    await db.execAsync("PRAGMA user_version = 1;");
   });
 
   afterEach(async () => {

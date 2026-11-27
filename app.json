@@ -16,8 +16,10 @@
     },
     "ios": {
       "bundleIdentifier": "app.zioncodes.emdia",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Permita o uso do Face ID para bloquear e desbloquear seus dados financeiros com segurança."
+        "NSFaceIDUsageDescription": "Permita o uso do Face ID para bloquear e desbloquear seus dados financeiros com segurança.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

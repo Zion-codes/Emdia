@@ -2,6 +2,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { type JSX } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PlaceholderScreen } from "../modules/app/screens/PlaceholderScreen";
+import { HomeScreen } from "../modules/home/screens/HomeScreen";
 import { SettingsScreen } from "../modules/settings/screens/SettingsScreen";
 import { Icon, IconName } from "../shared/components/Icon";
 import {
@@ -69,7 +70,7 @@ export default function MainTabs(): JSX.Element {
     >
       <Tab.Screen
         name="Home"
-        component={PlaceholderScreen}
+        component={HomeScreen}
         options={{ title: "Início" }}
       />
       <Tab.Screen

@@ -1,4 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react-native";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react-native";
 import * as ReactNative from "react-native";
 import App from "./App";
 import { Icon } from "./src/shared/components/Icon";
@@ -13,7 +18,7 @@ describe("App", () => {
     await render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Resumo financeiro em construção")).toBeTruthy();
+      expect(screen.getByTestId("home-screen")).toBeTruthy();
     });
 
     expect(screen.getAllByText("Início").length).toBeGreaterThanOrEqual(1);
@@ -21,6 +26,13 @@ describe("App", () => {
     expect(screen.getByText("Faturas")).toBeTruthy();
     expect(screen.getByText("Mais")).toBeTruthy();
     expect(screen.getByText("Configurações")).toBeTruthy();
+
+    await fireEvent.press(screen.getByText("Transações"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Lançamentos e movimentações em construção")
+      ).toBeTruthy();
+    });
 
     spy.mockRestore();
   });
@@ -33,7 +45,7 @@ describe("App", () => {
     await render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("Resumo financeiro em construção")).toBeTruthy();
+      expect(screen.getByTestId("home-screen")).toBeTruthy();
     });
 
     spy.mockRestore();
